@@ -1,0 +1,21 @@
+{
+	"admin/be10000_fanrgb": {
+		"title": "Fan & RGB",
+		"order": 45,
+		"action": {
+			"type": "firstchild"
+		}
+	},
+	"admin/be10000_fanrgb/settings": {
+		"title": "Fan & RGB Control",
+		"order": 30,
+		"action": {
+			"type": "view",
+			"path": "be10000-fanrgb"
+		},
+		"depends": {
+			"acl": [ "be10000-fanrgb" ],
+			"uci": { "xiaomi-control": true }
+		}
+	}
+}
