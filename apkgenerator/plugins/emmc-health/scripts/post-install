@@ -1,0 +1,20 @@
+#!/bin/sh
+# luci-app-emmc-health APK post-install
+# 依赖已内置：luci-base / rpcd-mod-file / mmc-utils（固件已含）。
+# 这里只做权限修正 + 服务重载；不做在线 apk add（用户要求依赖全内置、不靠下载）。
+
+[ -n "$IPKG_INSTROOT" ] && exit 0
+
+# 后端脚本可执行位（API 上传普遍丢执行位，显式补回）
+chmod 0755 /usr/libexec/emmc-health 2>/dev/null || true
+chmod 0755 /usr/libexec/emmc-health-install-mmc 2>/dev/null || true
+
+# 重载 rpcd 让新 ACL / menu.d 立即生效，重载 uhttpd 让新视图生效
+if [ -x /etc/init.d/rpcd ]; then
+	/etc/init.d/rpcd reload >/dev/null 2>&1 || /etc/init.d/rpcd restart >/dev/null 2>&1 || true
+fi
+if [ -x /etc/init.d/uhttpd ]; then
+	/etc/init.d/uhttpd reload >/dev/null 2>&1 || /etc/init.d/uhttpd restart >/dev/null 2>&1 || true
+fi
+
+exit 0
