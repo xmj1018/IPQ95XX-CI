@@ -7,7 +7,7 @@
 		}
 	},
 	"admin/services/xiaomi-control": {
-		"title": "风扇与灯效",
+		"title": "风扇灯光控制",
 		"order": 85,
 		"action": {
 			"type": "view",
