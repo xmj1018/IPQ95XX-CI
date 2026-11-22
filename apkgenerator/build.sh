@@ -72,28 +72,26 @@ echo "===== 落地文件 ====="
 find "$TROOT" -type f | head -40
 echo "BUILD DONE"
 
+
 echo
-echo "===== 决定性验证：造依赖桩包 + 本地仓库 + 完整安装 ====="
-STUB=/work/stubroot
-rm -rf "$STUB"; mkdir -p "$STUB/out"
+echo "===== 决定性验证：依赖桩 + 一起安装(无需仓库索引) ====="
+STUB=/work/stub
+rm -rf "$STUB"; mkdir -p "$STUB"
 for dep in luci-base rpcd-mod-file ucode ucode-mod-ubus; do
   mkdir -p "$STUB/root_$dep"
   apk mkpkg --info "name:$dep" --info "version:1.0-r0" --info "arch:noarch" \
     --info "description:stub $dep" --files "$STUB/root_$dep" \
-    --output "$STUB/out/${dep}-1.0-r0.apk"
+    --output "$STUB/${dep}-1.0-r0.apk"
 done
-# 建索引
-( cd "$STUB/out" && apk mkndx --output APKINDEX.tar.gz .apk 2>/dev/null || apk mkndx APKINDEX.tar.gz .apk 2>/dev/null || true )
-# 用 --repository 指向本地, 加信任
 VROOT=/work/vroot
 rm -rf "$VROOT"; mkdir -p "$VROOT"
-for A in "$OUT"/*.apk; do
-  echo "--- 完整安装(带依赖): $(basename "$A") ---"
-  apk add --root "$VROOT" --allow-untrusted --no-scripts \
-    --repository "$STUB/out" "$A" 2>&1 || echo "  [装失败,见上]"
-done
+# 初始化 apk 数据库
+apk add --root "$VROOT" --initdb --allow-untrusted 2>&1 || true
+echo "--- 一起安装 桩包 + 插件包 ---"
+apk add --root "$VROOT" --allow-untrusted --no-scripts \
+  "$STUB"/*.apk "$OUT"/*.apk 2>&1 || echo "  [安装返回非0]"
 echo "--- 已安装列表 ---"
 apk info --root "$VROOT" 2>/dev/null || true
-echo "--- 验证插件文件落地 ---"
-find "$VROOT" -type f | grep -E 'luci-app|emmc|fanrgb|www|menu.d' | head -30
+echo "--- 插件文件落地 ---"
+find "$VROOT" -type f | grep -E 'emmc-health|fanrgb|menu.d|luci-static' | head -30
 echo "VERIFY DONE"
