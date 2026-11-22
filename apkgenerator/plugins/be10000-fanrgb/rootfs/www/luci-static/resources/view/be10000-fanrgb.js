@@ -229,7 +229,15 @@ return view.extend({
 
 	render: function(data) {
 		var self = this;
-		var c = uci.get_all('xiaomi-control', 'settings') || {};
+		/* 本版 LuCI 没有 uci.get_all()：用 uci.sections() 取整段再逐项 uci.get()，
+		   避免 "uci.get_all is not a function" 导致整页报错空白。 */
+		var _sec = uci.sections('xiaomi-control', 'control').filter(function(s) { return s['.name'] === 'settings'; })[0];
+		var c = {};
+		if (_sec) {
+			Object.keys(_sec).forEach(function(k) {
+				if (k[0] !== '.') c[k] = uci.get('xiaomi-control', 'settings', k);
+			});
+		}
 		this._color = /^#[0-9a-fA-F]{6}$/.test(c.color || '') ? c.color : '#0000ff';
 		this._color2 = /^#[0-9a-fA-F]{6}$/.test(c.second_color || '') ? c.second_color : '#ff00aa';
 
