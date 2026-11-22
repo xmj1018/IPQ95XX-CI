@@ -149,7 +149,11 @@ function nfcFault(error) {
 
 return view.extend({
 	load: function() {
-		return Promise.all([ uci.load('xiaomi-control'), uci.load('wireless'), callSystemBoard() ]);
+		return Promise.all([
+			L.resolveDefault(uci.load('xiaomi-control'), null),
+			L.resolveDefault(uci.load('wireless'), null),
+			L.resolveDefault(callSystemBoard(), {})
+		]);
 	},
 
 	updateStatus: function() {
@@ -202,7 +206,10 @@ return view.extend({
 		this.fanBadge = E('span', {}, '...');
 		this.ledStatus = E('span', {}, _('Collecting data...'));
 		this.nfcStatus = m.nfcStatus = E('span', {}, _('Collecting data...'));
-		if (/^xiaomi,be10000(?:-es)?$/.test(data[2].board_name || '')) {
+		/* 不再硬编码板名：原先 xiaomi,be10000 的正则在板名变体/取值失败时
+		   会让整个风扇+灯效控件区不渲染，表现为"菜单有、页面空"。
+		   前端一律渲染，硬件是否可用由上游后端 xiaomi-control.uc 自行判断。 */
+		if (true) {
 
 			/* ---------- 风扇卡片 ---------- */
 			s.tab('fan', _('🌀 Fan'));
