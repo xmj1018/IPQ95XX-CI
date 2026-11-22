@@ -16,7 +16,7 @@ mk_one() {
   echo "===== 打包 $KEY -> $PKG-$VER ====="
 
   # rootfs 可执行位
-  find "$P/rootfs" -type f \( -name 'emmc-health' -o -name 'emmc-health-install-mmc' -o -name 'fanctl' -o -name 'ledctl' -o -path '*/uci-defaults/*' \) -exec chmod 755 {} + 2>/dev/null || true
+  find "$P/rootfs" -type f \( -name 'emmc-health' -o -name 'emmc-health-install-mmc' -o -name 'fanctl' -o -name 'ledctl' -o -name '*.uc' -o -path '*/init.d/*' -o -path '*/uci-defaults/*' \) -exec chmod 755 {} + 2>/dev/null || true
 
   set -- mkpkg \
     --info "name:$PKG" \
@@ -49,6 +49,12 @@ mk_one emmc-health luci-app-emmc-health 1.1.3-r1 \
 
 mk_one be10000-fanrgb luci-app-be10000-fanrgb 1.0.0-r1 \
   "BE10000 Fan and RGB control SBE1V1K style UI" \
+  "https://github.com/VIKINGYFY/immortalwrt" \
+  "GPL-2.0-or-later" \
+  "luci-base rpcd-mod-file ucode ucode-mod-ubus"
+
+mk_one xiaomi-control-classic luci-app-xiaomi-control 20261122-r2 \
+  "BE10000 Fan and RGB control - OWRT native style improved UI" \
   "https://github.com/VIKINGYFY/immortalwrt" \
   "GPL-2.0-or-later" \
   "luci-base rpcd-mod-file ucode ucode-mod-ubus"
