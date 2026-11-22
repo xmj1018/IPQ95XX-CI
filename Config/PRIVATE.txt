@@ -1,23 +1,35 @@
-# ============================================================
-# PRIVATE.txt - SBE1V1K 【单机型】精简版（目标 ~80-90MB，能启动）
-# 用户 08:51 指令：一个一个来，先只编 SBE1V1K，把万兆风扇那套去掉；
-#          08:53 补：正常保留这个配置，另外把 OpenClash 加进来。
-# 配方：honk + OAF + iStoreOS 风格 + HomeProxyRE + 新版 Argon(2026-11-22 更新，万兆同款 woff2)
-#   + luci-app-router-tool(上游自带)
-#   + 仅 luci-app-sbe1v1k（rootfs 里没有任何 be10000 插件/驱动）
-#   + OpenClash
-# 不加：Docker / emmc-health / 36 插件全集 / 旧版自带 LED 触发器 / 旧 sbehw
-# ============================================================
+# ==========================================================
+# SBE1V1K 全新配方 | 2026-11-23 从零编写，不继承任何旧配置文件
+# ----------------------------------------------------------
+# 主题    : 参考固件提取的最新版 Argon（ucode 模板 + rpcd + 原版 woff2 字体）
+# 品牌    : sbe1v1k（左上角 / 登录页）
+# 后台    : 192.168.99.1  |  密码 12345678
+# SSID    : SBE1V1K-2.4G / -5.2G / -6G
+# 内置    : 风扇控制、RGB 状态灯、数码罗记 Route Tool、
+#           OpenClash、Honk、OAF —— 依赖全部编进 rootfs，不需事后安装
+# ==========================================================
 
-# ---------- honk 内核硬性要求（BTF 关键，缺 BTF 无法加载 eBPF）----------
+# ---------- 单机型：只编 SBE1V1K，其余全部关闭 ----------
+CONFIG_TARGET_DEVICE_qualcommbe_ipq95xx_DEVICE_askey_sbe1v1k=y
+CONFIG_TARGET_DEVICE_qualcommbe_ipq95xx_DEVICE_nokia_beacon-10=n
+CONFIG_TARGET_DEVICE_qualcommbe_ipq95xx_DEVICE_xiaomi_be7000=n
+CONFIG_TARGET_DEVICE_qualcommbe_ipq95xx_DEVICE_xiaomi_be7000-es=n
+CONFIG_TARGET_DEVICE_qualcommbe_ipq95xx_DEVICE_xiaomi_be10000=n
+CONFIG_TARGET_DEVICE_qualcommbe_ipq95xx_DEVICE_xiaomi_be10000-es=n
+CONFIG_TARGET_DEVICE_qualcommbe_ipq95xx_DEVICE_8devices_kiwi-dvk=n
+CONFIG_TARGET_DEVICE_qualcommbe_ipq95xx_DEVICE_arista_c-460=n
+CONFIG_TARGET_DEVICE_qualcommbe_ipq95xx_DEVICE_linksys_ln6001=n
+CONFIG_TARGET_DEVICE_qualcommbe_ipq95xx_DEVICE_qcom_rdp433=n
+
+# ---------- 默认主题 Argon（文件由 user-files 覆盖为参考固件最新版） ----------
+CONFIG_PACKAGE_luci-theme-argon=y
+CONFIG_PACKAGE_luci-app-argon-config=n
+
+# ---------- Honk 内核硬性依赖 ----------
+# BTF 依赖 DEBUG_INFO 且 !DEBUG_INFO_REDUCED；IPQ95XX 默认 REDUCED=y 会把 BTF 丢掉，
+# 内核就不会生成 /sys/kernel/btf/vmlinux，Honk 无法加载 eBPF。必须显式关掉 REDUCED。
 CONFIG_KERNEL_DEBUG_KERNEL=y
 CONFIG_KERNEL_DEBUG_INFO=y
-# 【BTF 关键 · 必读】上游 Kconfig: KERNEL_DEBUG_INFO_BTF depends on
-#   KERNEL_DEBUG_INFO && !KERNEL_DEBUG_INFO_REDUCED。
-# IPQ95XX/qualcommbe 不在 BUILDBOT 白名单，KERNEL_DEBUG_INFO_REDUCED 默认 =y，
-# 会把下面 BTF=y 直接丢弃 -> 内核不生成 /sys/kernel/btf/vmlinux -> Honk 报
-# "缺少内核 BTF，请安装与固件匹配的 vmlinux.btf"。必须显式关掉 REDUCED。
-# 关掉后 select DWARVES 会自动编译 host pahole（上游 tools/dwarves 已确认存在）。
 CONFIG_KERNEL_DEBUG_INFO_REDUCED=n
 CONFIG_KERNEL_DEBUG_INFO_BTF=y
 CONFIG_KERNEL_BPF=y
@@ -36,14 +48,14 @@ CONFIG_KERNEL_NETFILTER_NETLINK_QUEUE=y
 CONFIG_KERNEL_FUNCTION_TRACER=y
 CONFIG_KERNEL_DYNAMIC_FTRACE=y
 
-# ---------- honk 依赖的树内内核模块 ----------
+# ---------- Honk 依赖的树内内核模块 ----------
 CONFIG_PACKAGE_kmod-sched-core=y
 CONFIG_PACKAGE_kmod-sched-bpf=y
 CONFIG_PACKAGE_kmod-veth=y
 CONFIG_PACKAGE_kmod-nft-queue=y
 CONFIG_PACKAGE_kmod-nfnetlink-queue=y
 
-# ---------- honk 依赖的用户态组件 ----------
+# ---------- Honk 依赖的用户态组件 ----------
 CONFIG_PACKAGE_ca-bundle=y
 CONFIG_PACKAGE_ip-full=y
 CONFIG_PACKAGE_jsonfilter=y
@@ -56,18 +68,42 @@ CONFIG_PACKAGE_luci-base=y
 CONFIG_PACKAGE_cgi-io=y
 CONFIG_PACKAGE_v2ray-geoip=y
 CONFIG_PACKAGE_v2ray-geosite=y
-
-# ---------- honk 本体 + LuCI 管理界面 ----------
 CONFIG_PACKAGE_honk=y
 CONFIG_PACKAGE_luci-app-honk=y
 
-# ---------- OAF 一整套 ----------
+# ---------- OAF 应用过滤（含内核模块） ----------
 CONFIG_PACKAGE_appfilter=y
 CONFIG_PACKAGE_oaf=y
+CONFIG_PACKAGE_kmod-oaf=y
 CONFIG_PACKAGE_luci-app-oaf=y
-CONFIG_PACKAGE_luci-compat=y
 
-# ---------- iStoreOS 风格 ----------
+# ---------- OpenClash + ruby 全套（官方安装脚本的 BASE_DEPS + Makefile DEPENDS） ----------
+CONFIG_PACKAGE_luci-app-openclash=y
+CONFIG_PACKAGE_ruby=y
+CONFIG_PACKAGE_ruby-yaml=y
+CONFIG_PACKAGE_ruby-psych=y
+CONFIG_PACKAGE_ruby-pstore=y
+CONFIG_PACKAGE_unzip=y
+CONFIG_PACKAGE_dnsmasq-full=y
+CONFIG_PACKAGE_kmod-inet-diag=y
+CONFIG_PACKAGE_ip-full=y
+CONFIG_PACKAGE_curl=y
+CONFIG_PACKAGE_ca-bundle=y
+CONFIG_PACKAGE_kmod-tun=y
+CONFIG_PACKAGE_kmod-nft-tproxy=y
+
+# ---------- 上游自带 router-tool（SSID 初始化的后台组件，无菜单） ----------
+CONFIG_PACKAGE_luci-app-router-tool=y
+CONFIG_PACKAGE_luci-i18n-router-tool-zh-cn=y
+
+# ---------- 数码罗记 Route Tool 依赖（gdisk 提供 sgdisk） ----------
+CONFIG_PACKAGE_gdisk=y
+
+# ---------- SBE1V1K 风扇 / RGB 内核驱动 ----------
+CONFIG_PACKAGE_kmod-hwmon-pwmfan=y
+CONFIG_PACKAGE_kmod-leds-pwm=y
+
+# ---------- iStoreOS 风格：开机向导 + 应用商店 + 任务中心 ----------
 CONFIG_PACKAGE_luci-app-quickstart=y
 CONFIG_PACKAGE_quickstart=y
 CONFIG_PACKAGE_luci-app-istorex=y
@@ -79,100 +115,53 @@ CONFIG_PACKAGE_shadow-utils=y
 CONFIG_PACKAGE_shadow-useradd=y
 CONFIG_PACKAGE_mount-utils=y
 CONFIG_PACKAGE_block-mount=y
-CONFIG_PACKAGE_lsblk=y
-CONFIG_PACKAGE_e2fsprogs=y
-CONFIG_PACKAGE_parted=y
-CONFIG_PACKAGE_tar=y
-CONFIG_PACKAGE_libuci-lua=y
 
-# ---------- 主题：bootstrap（2026-11-23 用户指令）----------
-# 删除 luci-theme-argon / luci-app-argon-config 两个包（后期用户自行从源安装）；
-# 默认主题由 workflow WRT_THEME=bootstrap + Settings.sh 注入 luci-theme-bootstrap。
-# 【字体保持不变】user-files 里从万兆提取的 woff2 字体与全套模板一个字节都不动，
-# 仍随 files/ 覆盖进 rootfs，界面字体与小米万兆完全一致。
-CONFIG_PACKAGE_luci-theme-argon=n
-CONFIG_PACKAGE_luci-app-argon-config=n
-CONFIG_PACKAGE_wget-ssl=y
-CONFIG_PACKAGE_ucode-mod-math=y
-CONFIG_PACKAGE_flock=y
-CONFIG_PACKAGE_coreutils=y
-CONFIG_PACKAGE_coreutils-timeout=y
+# ---------- Docker：dockerman 管理界面 + 引擎全套（包名取自本源已成功编译的产物清单） ----------
+CONFIG_PACKAGE_luci-app-dockerman=y
+CONFIG_PACKAGE_luci-i18n-dockerman-zh-cn=y
+CONFIG_PACKAGE_docker=y
+CONFIG_PACKAGE_dockerd=y
+CONFIG_PACKAGE_docker-compose=y
+CONFIG_PACKAGE_docker-lan-bridge=y
+CONFIG_PACKAGE_containerd=y
+CONFIG_PACKAGE_runc=y
+CONFIG_PACKAGE_tini=y
+# 容器网络/存储内核模块（dockerd 依赖，显式锁死便于核对）
+CONFIG_PACKAGE_kmod-br-netfilter=y
+CONFIG_PACKAGE_kmod-nf-nat=y
+CONFIG_PACKAGE_kmod-nf-nat6=y
+CONFIG_PACKAGE_kmod-ipt-nat=y
+CONFIG_PACKAGE_kmod-ipt-core=y
+CONFIG_PACKAGE_kmod-nft-nat=y
+CONFIG_PACKAGE_kmod-nft-core=y
+CONFIG_PACKAGE_kmod-macvlan=y
+CONFIG_PACKAGE_kmod-dummy=y
+# Docker 运行必需的内核特性（cgroups / namespaces / overlay / bridge / ipvs）
+CONFIG_KERNEL_CGROUPS=y
+CONFIG_KERNEL_MEMCG=y
+CONFIG_KERNEL_CGROUP_SCHED=y
+CONFIG_KERNEL_CGROUP_FREEZER=y
+CONFIG_KERNEL_CGROUP_PIDS=y
+CONFIG_KERNEL_CGROUP_DEVICE=y
+CONFIG_KERNEL_CGROUP_NET_PRIO=y
+CONFIG_KERNEL_CGROUP_NET_CLASSID=y
+CONFIG_KERNEL_NAMESPACES=y
+CONFIG_KERNEL_UTS_NS=y
+CONFIG_KERNEL_IPC_NS=y
+CONFIG_KERNEL_USER_NS=y
+CONFIG_KERNEL_PID_NS=y
+CONFIG_KERNEL_OVERLAY_FS=y
+CONFIG_KERNEL_BRIDGE=y
+CONFIG_KERNEL_BRIDGE_NETFILTER=y
+CONFIG_KERNEL_IP_VS=y
+CONFIG_KERNEL_IP_VS_RR=y
+CONFIG_KERNEL_IP_VS_NFCT=y
+CONFIG_KERNEL_NETFILTER_XT_MATCH_ADDRTYPE=y
+CONFIG_KERNEL_NETFILTER_XT_MATCH_CONNTRACK=y
+CONFIG_KERNEL_NETFILTER_XT_MATCH_IPVS=y
+CONFIG_KERNEL_SECCOMP=y
+CONFIG_KERNEL_KEYS=y
+CONFIG_KERNEL_POSIX_MQUEUE=y
 
-# ---------- HomeProxy(1andrevich/homeproxy-hiddify) 依赖 ----------
-CONFIG_PACKAGE_luci-app-re-homeproxy=y
-# GENERAL.txt 默认选了官方 luci-app-homeproxy，与 re-homeproxy 同路径会冲突，显式关闭
+# ---------- 上游 GENERAL 基线里写死的 homeproxy 本固件不用，关掉避免冲突 ----------
 CONFIG_PACKAGE_luci-app-homeproxy=n
-CONFIG_PACKAGE_luci-i18n-homeproxy-zh-cn=n
-CONFIG_PACKAGE_kmod-nft-tproxy=y
-CONFIG_PACKAGE_kmod-tun=y
-CONFIG_PACKAGE_kmod-nft-queue=y
-CONFIG_PACKAGE_curl=y
-
-# ---------- 后期自行装插件所需的通用依赖基础 ----------
-CONFIG_PACKAGE_luci-lib-base=y
-CONFIG_PACKAGE_luci-lib-ipkg=y
-CONFIG_PACKAGE_libstdcpp=y
-CONFIG_PACKAGE_libopenssl=y
-CONFIG_PACKAGE_libcurl=y
-CONFIG_PACKAGE_zlib=y
-
-# ---------- 本机 hwctrl 界面插件的 rpc 依赖 ----------
-# 界面用 ubus file.exec 调 /usr/sbin/fanctl、/usr/sbin/ledctl，
-# 需 rpcd-mod-file 提供 file 对象；官方基线未显式选，这里补上，否则点开「无响应」。
-CONFIG_PACKAGE_rpcd-mod-file=y
-
-# ---------- SBE1V1K 本机硬件驱动（上游 DTS 已有节点，基线设成 =m 未入镜像）----------
-# ipq9570-sbe1v1k.dts: pwm-fan (cooling-levels 36/72/128/255) + pwm-leds 三色 :status
-# 万兆专用的 kmod-hwmon-emc2305 在这里【不选】，SBE 固件里不带任何万兆驱动。
-CONFIG_PACKAGE_kmod-hwmon-pwmfan=y
-CONFIG_PACKAGE_kmod-leds-pwm=y
-
-# ---------- luci-app-route-tool（用户口头写法）= 上游自带 luci-app-router-tool ----------
-# 基线本来就是 =y（manifest 20261118-r5），用户要求加进去，这里显式锁死确保不会漏。
-CONFIG_PACKAGE_luci-app-router-tool=y
-CONFIG_PACKAGE_luci-i18n-router-tool-zh-cn=y
-
-# ---------- luci-app-route-tool（数码罗记第三方分区工具，rothdren-lion）----------
-# 老式 Lua 插件，作为 user-files 覆盖层内置（controller/view + usr/libexec/route-tool*）。
-# 依赖 luci-base/luci-compat/lua/luci-lib-nixio —— 均已由 OpenClash 带入。
-# GPT 分区备份/写入需要 sgdisk（来自 gdisk），内置以免在线装依赖。
-CONFIG_PACKAGE_gdisk=y
-
-# ---------- OpenClash（用户 08:53 要求，SBE1V1K 先加；后期万兆也要加）----------
-# 源码由官方 Scripts/Packages.sh 的
-#   UPDATE_PACKAGE "openclash" "vernesong/OpenClash" "dev" "pkg"
-# 克隆，包已在 .config 里可见（默认 not set），这里选 y 即可，不要重复克隆。
-# 其 Makefile 的 config 段会自动带出 kmod-inet-diag / luci-compat /
-# kmod-nft-tproxy / dnsmasq_full_nftset 等依赖；dnsmasq-full 基线已是 =y。
-CONFIG_PACKAGE_luci-app-openclash=y
-#
-# 【2026-11-22 用户反馈：手动装 OpenClash 卡在 failed to install ruby】
-# 官方 install.sh: BASE_DEPS="ip-full ruby ruby-yaml unzip kmod-tun ruby-psych ruby-pstore"
-# Makefile DEPENDS: +dnsmasq-full +curl +ca-bundle +ip-full +ruby +ruby-yaml +kmod-tun +unzip
-# 精简固件的在线 apk 源里这些包下载不到（apk add 必然失败），
-# 所以必须把整套运行时依赖编译进 rootfs，刷机即用，不再需要联网装。
-# ruby-yaml 自身还依赖 ruby-pstore + ruby-psych（feed 里已确认存在），
-# 其余传递依赖（libruby / libyaml / ruby-enc ...）由 OpenWrt 依赖解析自动带出。
-CONFIG_PACKAGE_ruby=y
-CONFIG_PACKAGE_ruby-yaml=y
-CONFIG_PACKAGE_ruby-psych=y
-CONFIG_PACKAGE_ruby-pstore=y
-CONFIG_PACKAGE_unzip=y
-CONFIG_PACKAGE_dnsmasq-full=y
-CONFIG_PACKAGE_kmod-inet-diag=y
-
-# ---------- 只编一个机型：SBE1V1K ----------
-# IPQ95XX.txt 默认一次启用 6 个 DEVICE，CI 只有一个 job，files/ 覆盖是全局的，
-# 会把两套机型插件同时塞进每个固件（界面出现两个「风扇控制」）。
-# PRIVATE.txt 是最后 cat 进 .config 的、优先级最高，这里把其它 5 个全部关掉，
-# 一次只出 SBE1V1K 的 factory + sysupgrade 两个文件。
-CONFIG_TARGET_DEVICE_qualcommbe_ipq95xx_DEVICE_askey_sbe1v1k=y
-CONFIG_TARGET_DEVICE_qualcommbe_ipq95xx_DEVICE_nokia_beacon-10=n
-CONFIG_TARGET_DEVICE_qualcommbe_ipq95xx_DEVICE_xiaomi_be7000=n
-CONFIG_TARGET_DEVICE_qualcommbe_ipq95xx_DEVICE_xiaomi_be7000-es=n
-CONFIG_TARGET_DEVICE_qualcommbe_ipq95xx_DEVICE_xiaomi_be10000=n
-CONFIG_TARGET_DEVICE_qualcommbe_ipq95xx_DEVICE_xiaomi_be10000-es=n
-
-# ---------- 固件体积/分区相关 ----------
-CONFIG_TARGET_ROOTFS_SQUASHFS=y
-CONFIG_TARGET_ROOTFS_INITRAMFS=n
