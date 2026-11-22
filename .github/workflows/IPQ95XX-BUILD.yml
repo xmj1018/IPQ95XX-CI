@@ -1,6 +1,5 @@
-# SPDX-License-Identifier: MIT
-# 自定义编译入口：仅编译 qualcommbe/ipq95xx/xiaomi_be10000
-# 基于 VIKINGYFY/OpenWRT-CI 的 WRT-TEST.yml，固定参数、真正编译（TEST=false）
+# SBE1V1K 新固件编译入口（2026-11-23 从零编写，不继承任何旧配置）
+# Argon 主题与字体由 user-files 覆盖：从 LibWrt 参考固件提取的最新版全套
 
 name: IPQ95XX-BUILD
 
@@ -15,9 +14,10 @@ jobs:
     uses: ./.github/workflows/WRT-CORE.yml
     with:
       WRT_CONFIG: IPQ95XX
-      WRT_THEME: bootstrap
-      # 主机名 = 左上角/登录页品牌字 = SBE1V1K。OWRT SSID 是字面量不可改。
-      WRT_NAME: SBE1V1K
+      WRT_THEME: argon
+      # hostname = 左上角与登录页的品牌字（新版 Argon 模板直接取 hostname 渲染）
+      WRT_NAME: sbe1v1k
+      # OWRT 是上游 router-tool 用来识别默认 AP 的字面量，改动会导致无线不初始化
       WRT_SSID: OWRT
       WRT_WORD: 12345678
       WRT_IP: 192.168.99.1
