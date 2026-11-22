@@ -59,21 +59,7 @@ mk_one xiaomi-control-classic luci-app-xiaomi-control 20261122-r6 \
   "GPL-2.0-or-later" \
   "luci-base rpcd-mod-file ucode ucode-mod-ubus"
 
-echo
-echo "===== 验证：apk add --allow-untrusted 实测安装到临时 root ====="
-i=0
-for A in "$OUT"/*.apk; do
-  i=$((i+1))
-  TROOT="/work/testroot_$i"
-  rm -rf "$TROOT"; mkdir -p "$TROOT"
-  echo "--- 安装测试(独立root): $(basename "$A") ---"
-  apk add --root "$TROOT" --allow-untrusted --no-scripts --initdb "$A" 2>&1 || {
-    echo "  [WARN] 直接失败, 尝试 --force-depends"
-    apk add --root "$TROOT" --allow-untrusted --no-scripts --initdb --force-depends "$A" 2>&1 || true
-  }
-done
 echo "BUILD DONE"
-
 
 echo
 echo "===== 决定性验证：依赖桩 + 一起安装(无需仓库索引) ====="
@@ -86,19 +72,27 @@ for dep in luci-base rpcd-mod-file ucode ucode-mod-ubus; do
     --output "$STUB/${dep}-1.0-r0.apk"
 done
 # 经典版与精致版后端文件同名（二者二选一，不可同装），故各自独立 root 验证
-for PKG_KEY in xiaomi-control-classic be10000-fanrgb; do
-  VROOT="/work/vroot_$PKG_KEY"
-  rm -rf "$VROOT"; mkdir -p "$VROOT"
-  apk add --root "$VROOT" --initdb --allow-untrusted 2>&1 || true
-  echo "--- 决定性验证 $PKG_KEY: 桩包 + eMMC + $PKG_KEY ---"
-  case "$PKG_KEY" in
-    xiaomi-control-classic) APKS="$STUB"/*.apk "$OUT"/luci-app-emmc-health_*.apk "$OUT"/luci-app-xiaomi-control_*.apk ;;
-    be10000-fanrgb) APKS="$STUB"/*.apk "$OUT"/luci-app-emmc-health_*.apk "$OUT"/luci-app-be10000-fanrgb_*.apk ;;
-  esac
-  apk add --root "$VROOT" --allow-untrusted --no-scripts $APKS 2>&1 || echo "  [安装返回非0]"
-  echo "--- 已安装列表($PKG_KEY) ---"
-  apk info --root "$VROOT" 2>/dev/null || true
-  echo "--- 后端文件落地($PKG_KEY) ---"
-  find "$VROOT" -type f | grep -E 'xiaomi-control.uc|xiaomi-nfc.uc|init.d/xiaomi-control|config/xiaomi-control|menu.d|luci-static' | head -30
-done
+echo "--- 决定性验证 A: 桩包 + eMMC + 经典版 ---"
+VROOT=/work/vroot_a
+rm -rf "$VROOT"; mkdir -p "$VROOT"
+apk add --root "$VROOT" --initdb --allow-untrusted 2>&1 || true
+apk add --root "$VROOT" --allow-untrusted --no-scripts \
+  "$STUB"/*.apk \
+  "$OUT"/luci-app-emmc-health_*.apk \
+  "$OUT"/luci-app-xiaomi-control_*.apk 2>&1 || echo "  [安装返回非0]"
+apk info --root "$VROOT" 2>/dev/null || true
+echo "--- A 后端文件落地 ---"
+find "$VROOT" -type f | grep -E 'xiaomi-control.uc|xiaomi-nfc.uc|init.d/xiaomi-control|config/xiaomi-control|menu.d|luci-static' | head -30
+
+echo "--- 决定性验证 B: 桩包 + eMMC + 精致版 ---"
+VROOT=/work/vroot_b
+rm -rf "$VROOT"; mkdir -p "$VROOT"
+apk add --root "$VROOT" --initdb --allow-untrusted 2>&1 || true
+apk add --root "$VROOT" --allow-untrusted --no-scripts \
+  "$STUB"/*.apk \
+  "$OUT"/luci-app-emmc-health_*.apk \
+  "$OUT"/luci-app-be10000-fanrgb_*.apk 2>&1 || echo "  [安装返回非0]"
+apk info --root "$VROOT" 2>/dev/null || true
+echo "--- B 后端文件落地 ---"
+find "$VROOT" -type f | grep -E 'xiaomi-control.uc|xiaomi-nfc.uc|init.d/xiaomi-control|config/xiaomi-control|menu.d|luci-static' | head -30
 echo "VERIFY DONE"
