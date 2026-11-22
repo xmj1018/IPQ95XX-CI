@@ -12,6 +12,13 @@
 # ---------- honk 内核硬性要求（BTF 关键，缺 BTF 无法加载 eBPF）----------
 CONFIG_KERNEL_DEBUG_KERNEL=y
 CONFIG_KERNEL_DEBUG_INFO=y
+# 【BTF 关键 · 必读】上游 Kconfig: KERNEL_DEBUG_INFO_BTF depends on
+#   KERNEL_DEBUG_INFO && !KERNEL_DEBUG_INFO_REDUCED。
+# IPQ95XX/qualcommbe 不在 BUILDBOT 白名单，KERNEL_DEBUG_INFO_REDUCED 默认 =y，
+# 会把下面 BTF=y 直接丢弃 -> 内核不生成 /sys/kernel/btf/vmlinux -> Honk 报
+# "缺少内核 BTF，请安装与固件匹配的 vmlinux.btf"。必须显式关掉 REDUCED。
+# 关掉后 select DWARVES 会自动编译 host pahole（上游 tools/dwarves 已确认存在）。
+CONFIG_KERNEL_DEBUG_INFO_REDUCED=n
 CONFIG_KERNEL_DEBUG_INFO_BTF=y
 CONFIG_KERNEL_BPF=y
 CONFIG_KERNEL_BPF_SYSCALL=y
@@ -128,6 +135,21 @@ CONFIG_PACKAGE_luci-i18n-router-tool-zh-cn=y
 # 其 Makefile 的 config 段会自动带出 kmod-inet-diag / luci-compat /
 # kmod-nft-tproxy / dnsmasq_full_nftset 等依赖；dnsmasq-full 基线已是 =y。
 CONFIG_PACKAGE_luci-app-openclash=y
+#
+# 【2026-11-22 用户反馈：手动装 OpenClash 卡在 failed to install ruby】
+# 官方 install.sh: BASE_DEPS="ip-full ruby ruby-yaml unzip kmod-tun ruby-psych ruby-pstore"
+# Makefile DEPENDS: +dnsmasq-full +curl +ca-bundle +ip-full +ruby +ruby-yaml +kmod-tun +unzip
+# 精简固件的在线 apk 源里这些包下载不到（apk add 必然失败），
+# 所以必须把整套运行时依赖编译进 rootfs，刷机即用，不再需要联网装。
+# ruby-yaml 自身还依赖 ruby-pstore + ruby-psych（feed 里已确认存在），
+# 其余传递依赖（libruby / libyaml / ruby-enc ...）由 OpenWrt 依赖解析自动带出。
+CONFIG_PACKAGE_ruby=y
+CONFIG_PACKAGE_ruby-yaml=y
+CONFIG_PACKAGE_ruby-psych=y
+CONFIG_PACKAGE_ruby-pstore=y
+CONFIG_PACKAGE_unzip=y
+CONFIG_PACKAGE_dnsmasq-full=y
+CONFIG_PACKAGE_kmod-inet-diag=y
 
 # ---------- 只编一个机型：SBE1V1K ----------
 # IPQ95XX.txt 默认一次启用 6 个 DEVICE，CI 只有一个 job，files/ 覆盖是全局的，
