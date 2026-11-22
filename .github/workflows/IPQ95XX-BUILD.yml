@@ -16,8 +16,8 @@ jobs:
     with:
       WRT_CONFIG: IPQ95XX
       WRT_THEME: argon
-      # 主机名 = 左上角/登录页品牌字（样机 LibWrt）。OWRT SSID 是字面量不可改。
-      WRT_NAME: LibWrt
+      # 主机名 = 左上角/登录页品牌字（SBE 沿用 ImmortalWRT）。OWRT SSID 是字面量不可改。
+      WRT_NAME: ImmortalWRT
       WRT_SSID: OWRT
       WRT_WORD: 12345678
       WRT_IP: 192.168.10.1
