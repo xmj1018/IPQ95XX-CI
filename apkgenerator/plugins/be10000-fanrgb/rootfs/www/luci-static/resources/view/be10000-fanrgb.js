@@ -277,10 +277,10 @@ return view.extend({
 			E('style', {}, CSS),
 			E('div', { 'class': 'hw-head' }, [
 				E('div', {}, [
-					E('h2', { 'class': 'hw-title' }, '风扇与灯效控制'),
+					E('h2', { 'class': 'hw-title' }, '风扇灯光控制'),
 					E('div', { 'class': 'hw-sub' },
-						'小米 BE10000 · 引用 OWRT 上游硬件控制器：emc2305 PWM 风扇 + RGB 环境灯。' +
-						'下方实时数据每 5 秒刷新；修改参数后点「应用」即重载生效。')
+						'小米 BE10000 风扇与灯光控制面板。' +
+						'下方实时数据每 5 秒刷新；修改参数后点「应用」即生效。')
 				]),
 				E('span', { 'class': 'hw-pill', 'id': 'hw-run-pill' }, '● 读取中')
 			]),
