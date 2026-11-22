@@ -15,7 +15,7 @@ jobs:
     uses: ./.github/workflows/WRT-CORE.yml
     with:
       WRT_CONFIG: IPQ95XX
-      WRT_THEME: argon
+      WRT_THEME: bootstrap
       # 主机名 = 左上角/登录页品牌字 = SBE1V1K。OWRT SSID 是字面量不可改。
       WRT_NAME: SBE1V1K
       WRT_SSID: OWRT
