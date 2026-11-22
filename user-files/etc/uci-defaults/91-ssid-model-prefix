@@ -1,28 +1,9 @@
 #!/bin/sh
-# SSID 前缀 = 机型名（SBE1V1K），交给上游 router-tool 自动生成
-#   SBE1V1K-2.4G / SBE1V1K-5.2G / SBE1V1K-6G（三频；第三频段是 6G，不是 5.8G）
-#   后缀由上游 wireless.uc 按 band 自动生成：2G->2.4G、5G->5.2G/5.8G、6G->6G。
-#
-# 原理：上游 luci-app-router-tool 的 wireless.uc 会读
-#   /etc/config/router-tool 里 config wireless 'defaults' 的 ssid/key，
-#   用 <ssid>-<suffix> 作为 AP 名，key 作为密码。这是官方自带的自定义入口。
-# 本脚本只填这个段，【不修改任何上游源码】——wireless.uc 里识别
-# "未改过默认 AP" 的 iface.ssid == 'OWRT' 判断保持原样，router-tool 照常初始化。
-# 执行时机：uci-defaults 首次启动运行，早于 router-tool-auto（service/hotplug），
-#   所以 router-tool 初始化时读到的就是机型前缀。
-
-# defaults 段由包自带 /etc/config/router-tool 提供（config wireless 'defaults'）。
-# 这里用命名段直接 set，若确实缺失则补建一个，保证健壮。
-if ! uci -q get router-tool.defaults.ssid >/dev/null 2>&1; then
-	if ! uci -q get router-tool.defaults >/dev/null 2>&1; then
-		uci add router-tool defaults >/dev/null 2>&1
-		# add 出来是匿名段，重命名为 defaults，保证 wireless.uc 的 get_all('router-tool','defaults') 能取到
-		uci rename router-tool.@defaults[-1]=defaults >/dev/null 2>&1
-	fi
-fi
-
+# 三频 SSID 前缀：SBE1V1K-2.4G / -5.2G / -6G
+# 上游 router-tool 用 defaults.ssid + 频段后缀生成 AP 名；
+# OWRT 是它识别"未改过默认 AP"的判断字面量，保持不动，只填自定义入口。
+for i in 1 2 3 4 5; do uci -q get router-tool.defaults >/dev/null 2>&1 && break; uci add router-tool defaults >/dev/null 2>&1; uci rename router-tool.@defaults[-1]=defaults >/dev/null 2>&1; done
 uci set router-tool.defaults.ssid='SBE1V1K'
 uci set router-tool.defaults.key='12345678'
-uci commit router-tool 2>/dev/null || true
-
+uci commit router-tool 2>/dev/null || :
 exit 0
