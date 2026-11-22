@@ -47,13 +47,13 @@ mk_one emmc-health luci-app-emmc-health 1.1.3-r1 \
   "GPL-3.0-only" \
   "luci-base rpcd-mod-file"
 
-mk_one be10000-fanrgb luci-app-be10000-fanrgb 1.0.0-r1 \
+mk_one be10000-fanrgb luci-app-be10000-fanrgb 1.0.0-r2 \
   "BE10000 Fan and RGB control SBE1V1K style UI" \
   "https://github.com/VIKINGYFY/immortalwrt" \
   "GPL-2.0-or-later" \
   "luci-base rpcd-mod-file ucode ucode-mod-ubus"
 
-mk_one xiaomi-control-classic luci-app-xiaomi-control 20261122-r2 \
+mk_one xiaomi-control-classic luci-app-xiaomi-control 20261122-r3 \
   "BE10000 Fan and RGB control - OWRT native style improved UI" \
   "https://github.com/VIKINGYFY/immortalwrt" \
   "GPL-2.0-or-later" \
