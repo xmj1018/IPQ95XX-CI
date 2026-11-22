@@ -1,0 +1,18 @@
+#!/bin/sh
+# luci-app-be10000-fanrgb 安装后处理（SBE 风格界面版）
+# 本包只提供新界面 + 菜单 + ACL；后端复用 OWRT 上游 luci-app-xiaomi-control
+# 的 xiaomi-control.uc（固件已内置或由上一版 APK 提供），硬件控制参数完全共用。
+
+# 1. 让新 ACL / 新菜单 / 新界面立即生效
+rm -f /tmp/luci-indexcache* 2>/dev/null || :
+rm -rf /tmp/luci-modulecache/* 2>/dev/null || :
+[ -x /etc/init.d/rpcd ] && /etc/init.d/rpcd restart >/dev/null 2>&1 || :
+
+# 2. 确保上游后端在运行（若固件里已有且已启用则此步无副作用）
+if [ -x /etc/init.d/xiaomi-control ]; then
+	/etc/init.d/xiaomi-control enabled >/dev/null 2>&1 && {
+		/etc/init.d/xiaomi-control restart >/dev/null 2>&1 || :
+	}
+fi
+
+exit 0
