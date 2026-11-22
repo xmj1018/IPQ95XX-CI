@@ -14,8 +14,7 @@
 			"path": "xiaomi-control"
 		},
 		"depends": {
-			"acl": [ "luci-app-xiaomi-control" ],
-			"uci": { "xiaomi-control": true }
+			"acl": [ "luci-app-xiaomi-control" ]
 		}
 	}
 }
