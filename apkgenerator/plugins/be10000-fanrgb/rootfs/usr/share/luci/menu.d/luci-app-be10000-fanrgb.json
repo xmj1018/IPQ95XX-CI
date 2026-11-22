@@ -7,7 +7,7 @@
 		}
 	},
 	"admin/services/be10000-fanrgb": {
-		"title": "风扇与灯效（精致版）",
+		"title": "风扇灯光控制",
 		"order": 86,
 		"action": {
 			"type": "view",
