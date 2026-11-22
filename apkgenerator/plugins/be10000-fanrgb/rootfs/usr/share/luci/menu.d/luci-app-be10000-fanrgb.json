@@ -1,14 +1,14 @@
 {
-	"admin/be10000_fanrgb": {
-		"title": "Fan & RGB",
+	"admin/services": {
+		"title": "服务",
 		"order": 45,
 		"action": {
 			"type": "firstchild"
 		}
 	},
-	"admin/be10000_fanrgb/settings": {
-		"title": "Fan & RGB Control",
-		"order": 30,
+	"admin/services/be10000-fanrgb": {
+		"title": "风扇与灯效（精致版）",
+		"order": 86,
 		"action": {
 			"type": "view",
 			"path": "be10000-fanrgb"
