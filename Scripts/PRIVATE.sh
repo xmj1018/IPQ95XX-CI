@@ -57,6 +57,7 @@ if [ -d "$GITHUB_WORKSPACE/user-files" ]; then
     ./files/usr/lib/sbe1v1k/fanctl ./files/usr/lib/sbe1v1k/ledctl \
     ./files/usr/lib/sbe1v1k/init.fanctl ./files/usr/lib/sbe1v1k/init.ledctl \
     ./files/etc/uci-defaults/99-hwctrl-enable \
+    ./files/etc/uci-defaults/91-ssid-model-prefix \
     ./files/usr/libexec/route-tool ./files/usr/libexec/route-tool.d/*.sh 2>/dev/null || :
 
   # 双保险：远程 user-files 是全仓库共用的，切机型时上一版的残留会被整包卷进来。
