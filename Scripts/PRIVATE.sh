@@ -1,21 +1,22 @@
 #!/bin/bash
 # SPDX-License-Identifier: MIT
 # 自定义插件源扩展脚本（由官方 Scripts/Packages.sh 末尾自动 source）
-# 【小米万兆 BE10000 单机型】一次只编这一台：Config 里只启用 xiaomi_be10000。
+# 【SBE1V1K 单机型精简版】一次只编这一台：Config 里只启用 askey_sbe1v1k，
+# files/ 里只有 luci-app-sbe1v1k，完全没有万兆 BE10000 的插件/后端/菜单/驱动。
+# 界面只有一个「风扇控制」+ 一个「RGB 状态灯」。
 #
-# 2026-11-22 用户【最终定稿】：
-#   * Argon 主题用新版 —— 直接用 Packages.sh 默认的
-#     sbwml/luci-theme-argon openwrt-25.12（新版 26.x），user-files 覆盖样机 91 文件。
-#   * 品牌 BE10000：由 workflow WRT_NAME=BE10000 设置 hostname（左上/登录页取此值）。
-#   * 后台 192.168.100.1；SSID 三频 BE10000-2.4G/5.2G/5.8G（uci-defaults 覆盖，OWRT 不动）。
-#   * 风扇/RGB：拆两个独立精致菜单全放「系统」下，共用上游 xiaomi-control 后端。
-#   * 加数码罗记第三方 route-tool（user-files + gdisk）；去掉 eMMC-health。
-#   * 配方与 SBE 一致：honk + OAF + iStoreOS + HomeProxyRE + router-tool + OpenClash。
-#
-# 源码由官方 Scripts/Packages.sh 提供（openclash / honk 等按需克隆）。
+# 配方照旧（用户：正常保留这个配置就行）：
+#   honk + OAF + iStoreOS 风格 + HomeProxyRE + 新版 Argon(万兆同款 woff2 字体)
+#   + luci-app-sbe1v1k + luci-app-router-tool(上游自带) + OpenClash
+# OpenClash 源码由官方 Scripts/Packages.sh 的
+#   UPDATE_PACKAGE "openclash" "vernesong/OpenClash" "dev" "pkg"
+# 克隆，这里【不要重复克隆】，只需在 PRIVATE.txt 里把
+# CONFIG_PACKAGE_luci-app-openclash 选成 y。
+# 旧版 OW 自带风扇/LED 界面、LED 触发器、旧 sbehw 全部移除。
+# 不加 Docker / emmc-health / 36 插件全集 —— 控制体积确保能启动。
 
 echo " "
-echo "========== Load PRIVATE.sh (BE10000 single-device, LibWrt argon) =========="
+echo "========== Load PRIVATE.sh (SBE1V1K single-device lite) =========="
 
 # ---------------- honk（用户指定：kenzok8/openwrt-honk）----------------
 rm -rf ./package/honk ./package/luci-app-honk ./package/doona ./package/luci-app-doona 2>/dev/null
@@ -26,8 +27,9 @@ UPDATE_PACKAGE "luci-app-honk" "kenzok8/openwrt-honk" "main" "pkg"
 # v2ray GeoIP / GeoSite（honk 路由数据依赖）
 UPDATE_PACKAGE "v2ray-geodata" "kenzok8/small" "master" "" "v2ray-geoip v2ray-geosite"
 
-# ---------------- OAF（destan19 同源一整套版本配套）----------------
-# 不要额外克隆 kenzok8/jell 的 luci-app-oaf(版本0)，会和 appfilter 7.0.2 冲突。
+# ---------------- OAF（应用过滤，destan19 同源一整套版本配套）----------------
+# 不要额外克隆 kenzok8/jell 的 luci-app-oaf(版本0)，它和 appfilter 7.0.2 都提供
+# usr/share/rpcd/acl.d/luci-app-oaf.json，会 trying to overwrite 导致打包失败。
 UPDATE_PACKAGE "open-app-filter" "destan19/OpenAppFilter" "master" "" "luci-app-appfilter oaf open-app-filter"
 
 # ---------------- iStoreOS 风格（同源保版本一致）----------------
@@ -35,98 +37,82 @@ for PKG in quickstart luci-app-quickstart luci-app-istorex luci-app-store taskd 
   UPDATE_PACKAGE "$PKG" "kenzok8/openwrt-packages" "master" "pkg"
 done
 
-# ---------------- Argon：用 Packages.sh 默认的新版 sbwml/luci-theme-argon openwrt-25.12 ----------------
-# 不覆盖、不克隆 kenzok8 老版。样机 LibWrt 就是这套新版（片段模板+ucode+rpcd 动态模块）。
-# 品牌 LibWrt 由 WRT_NAME=LibWrt 设置 hostname，新版 argon 模板取 hostname 渲染。
+# ---------------- Argon 主题：用 Packages.sh 默认的新版 sbwml/luci-theme-argon openwrt-25.12 ----------------
+# 2026-11-22 用户指令：Argon 更新到最新，字体沿用小米万兆那套（新版 woff2）。
+# 不再克隆 kenzok8 老版覆盖（老版 2.4.2 + woff 字体已弃用）；CI 的 Packages.sh
+# 默认 UPDATE_PACKAGE "argon" "sbwml/luci-theme-argon" "openwrt-25.12" 就是新版，
+# user-files 覆盖万兆同款新版 91 文件（11 模板 + woff2 字体 + rpcd/ucode/js/icon）。
+# 品牌 SBE1V1K 由 WRT_NAME=SBE1V1K 设 hostname，新版模板取 hostname 渲染。
 
-# ---------------- HomeProxy（1andrevich/homeproxy-hiddify）----------------
+# ---------------- HomeProxy（用户指定：1andrevich/homeproxy-hiddify）----------------
 UPDATE_PACKAGE "luci-app-re-homeproxy" "1andrevich/homeproxy-hiddify" "master" "" "luci-app-homeproxy"
 
-# ---------------- 自定义文件覆盖（样机新版 Argon 91 文件）----------------
+# ---------------- 自定义文件覆盖（新版 Argon 全套 + 仅 luci-app-sbe1v1k）----------------
 if [ -d "$GITHUB_WORKSPACE/user-files" ]; then
   mkdir -p ./files
   cp -af "$GITHUB_WORKSPACE/user-files/." ./files/
 
   # GitHub REST API 上传的文件一律 100644，会丢可执行位。
-  # argon 的 rpcd 脚本 / uci-defaults / 后端 ucode / init / route-tool 全部补回 755。
+  # 后端脚本、init、uci-defaults、新版 Argon 的 rpcd 动态模块脚本必须补回 755。
   chmod 755 \
+    ./files/usr/sbin/fanctl ./files/usr/sbin/ledctl \
+    ./files/etc/init.d/fanctl ./files/etc/init.d/ledctl \
+    ./files/usr/lib/sbe1v1k/fanctl ./files/usr/lib/sbe1v1k/ledctl \
+    ./files/usr/lib/sbe1v1k/init.fanctl ./files/usr/lib/sbe1v1k/init.ledctl \
+    ./files/etc/uci-defaults/99-hwctrl-enable \
+    ./files/etc/uci-defaults/30_luci-theme-argon \
+    ./files/etc/uci-defaults/990_set_argon_primary \
+    ./files/etc/uci-defaults/91-ssid-model-prefix \
+    ./files/usr/libexec/route-tool ./files/usr/libexec/route-tool.d/*.sh \
     ./files/usr/libexec/rpcd/luci.argon \
     ./files/usr/libexec/rpcd/luci.argon_appearance \
     ./files/usr/libexec/rpcd/luci.argon_branding \
     ./files/usr/libexec/rpcd/luci.argon_update \
-    ./files/usr/libexec/rpcd/luci.argon_wallpaper \
-    ./files/etc/uci-defaults/30_luci-theme-argon \
-    ./files/etc/uci-defaults/990_set_argon_primary \
-    ./files/etc/uci-defaults/91-ssid-model-prefix \
-    ./files/etc/init.d/xiaomi-control \
-    ./files/usr/libexec/xiaomi-control.uc \
-    ./files/usr/libexec/xiaomi-nfc.uc \
-    ./files/usr/libexec/route-tool \
-    ./files/usr/libexec/route-tool.d/*.sh 2>/dev/null || :
+    ./files/usr/libexec/rpcd/luci.argon_wallpaper 2>/dev/null || :
   chmod 755 ./files/usr/lib/lua/luci/controller/route_tool.lua 2>/dev/null || :
 
-  # 上游 luci-app-xiaomi-control 自带单体菜单「控制→Xiaomi Control」，用户要求
-  # 风扇/RGB 只在「系统」下出现两个独立菜单。用同名空 JSON 覆盖掉上游菜单文件。
-  # （只中和菜单，不动后端/驱动，符合“保留上游后端”要求）
-  printf '{}\n' > ./files/usr/share/luci/menu.d/luci-app-xiaomi-control.json
-
-  # 双保险：远程 user-files 是全仓库共用的，切机型时上一版 SBE 残留会被整包卷进来。
-  # 这里把 SBE1V1K 那一套全部清掉，万兆固件里连文件都不带。
-  rm -f ./files/etc/config/fan ./files/etc/config/led \
-        ./files/etc/init.d/fanctl ./files/etc/init.d/ledctl \
-        ./files/usr/sbin/fanctl ./files/usr/sbin/ledctl \
-        ./files/usr/share/luci/menu.d/luci-app-sbe1v1k.json \
-        ./files/usr/share/rpcd/acl.d/luci-app-sbe1v1k.json \
-        ./files/etc/uci-defaults/99-hwctrl-enable \
+  # 双保险：远程 user-files 是全仓库共用的，切机型时上一版的残留会被整包卷进来。
+  # 这里把万兆 BE10000 那一套全部清掉，确保这个固件里连文件都不带。
+  rm -f ./files/etc/config/be10000 \
+        ./files/etc/init.d/be10000-fan ./files/etc/init.d/be10000-led \
+        ./files/usr/sbin/be10000-fanctl ./files/usr/sbin/be10000-ledctl \
+        ./files/usr/share/luci/menu.d/luci-app-be10000.json \
+        ./files/usr/share/rpcd/acl.d/luci-app-be10000.json \
         ./files/usr/share/luci/menu.d/luci-app-fan.json \
         ./files/usr/share/luci/menu.d/luci-app-led.json \
         ./files/usr/share/luci/menu.d/luci-app-sbehw.json \
         ./files/usr/share/rpcd/acl.d/luci-app-fan.json \
         ./files/usr/share/rpcd/acl.d/luci-app-led.json \
         ./files/usr/share/rpcd/acl.d/luci-app-sbehw.json \
+        ./files/www/luci-static/resources/view/system/fan.js \
+        ./files/www/luci-static/resources/view/system/led.js \
         ./files/etc/board.d/01_leds \
         ./files/etc/modules.d/60-hwmon-pwmfan \
         ./files/lib/functions/leds.sh \
         ./files/sbin/led.sh 2>/dev/null || :
-  rm -rf ./files/usr/lib/sbe1v1k \
-         ./files/www/luci-static/resources/view/sbe1v1k \
-         ./files/www/luci-static/resources/view/sbehw \
-         ./files/www/luci-static/resources/view/system/led-trigger 2>/dev/null || :
+  rm -rf ./files/www/luci-static/resources/view/be10000 \
+         ./files/www/luci-static/resources/view/system/led-trigger \
+         ./files/www/luci-static/resources/view/sbehw 2>/dev/null || :
 
-  # 双保险：清掉上一版万兆固件的 eMMC-health 和旧单体 fanrgb（本版已不要）。
-  rm -f ./files/usr/libexec/emmc-health \
-        ./files/usr/libexec/emmc-health-install-mmc \
-        ./files/usr/share/luci/menu.d/luci-app-emmc-health.json \
-        ./files/usr/share/rpcd/acl.d/luci-app-emmc-health.json \
-        ./files/www/luci-static/resources/view/emmc-health.js \
-        ./files/usr/share/luci/menu.d/luci-app-be10000-fanrgb.json \
-        ./files/usr/share/rpcd/acl.d/be10000-fanrgb.json \
-        ./files/www/luci-static/resources/view/be10000-fanrgb.js 2>/dev/null || :
-
-  echo "BE10000 argon + fan/led split + route-tool overlaid: $(find ./files -type f | wc -l) files"
+  echo "new Argon(woff2) + sbe1v1k ONLY overlaid: $(find ./files -type f | wc -l) files"
 else
   echo "WARN: user-files not found, skip overlay"
 fi
 
-# ---------------- 品牌 / 无线 / SSID / 密码 / 后台地址 ----------------
-# 本脚本【不修改任何上游源码文件】，完全照抄 VIKINGYFY/immortalwrt 默认机制：
-#   * 主机名 / 左上角 / 登录页品牌：workflow WRT_NAME=BE10000 -> Settings.sh 设 hostname。
-#   * 无线：wifi-scripts 输出 wifi-iface disabled='0'（默认开启）。
-#   * SSID 三频：BE10000-2.4G / BE10000-5.2G / BE10000-5.8G + 12345678，
-#     由 user-files/etc/uci-defaults/91-ssid-model-prefix 填 router-tool.defaults.ssid=BE10000，
-#     交给上游 router-tool 自带机制生成；品牌 BE10000 只管左上角/登录页。
-#   * 后台地址：Settings.sh 按 WRT_IP 设为 192.168.100.1。
-# 【OWRT 是上游 wireless.uc 内部判断用的字面量，严禁 sed 替换】
-# 上游 luci-app-router-tool 靠 wireless.uc 的 "iface.ssid != 'OWRT'" 判断未改过的默认 AP；
-# 已彻底不做任何源码 sed 替换，只用 uci-defaults 覆盖 SSID。
+# ---------------- 品牌 / 无线 / SSID / 密码 / 后台地址：全部保持上游默认 ----------------
+# 本脚本【不修改任何上游源码文件】，完全照抄 VIKINGYFY/immortalwrt 的默认：
+#   * 主机名 / 左上角 / 登录页品牌：由官方 Settings.sh 按 WRT_NAME=SBE1V1K 设置，
+#     新版 Argon 模板(header.ut / sysauth.ut)直接取 hostname 渲染，woff2 字体，页脚作者已删。
+#   * 无线：wifi-scripts 生成器输出 wifi-iface disabled='0'（默认开启）。
+#   * SSID / 密码：luci-app-router-tool 初始化为
+#     OWRT-2.4G / OWRT-5.2G / OWRT-6G + 12345678（SBE 三频，第三频段是 6G 不是 5.8G）。
+#   * 后台地址：官方 Settings.sh 按 WRT_IP 设为 192.168.99.1。
 #
-# ---------------- 本次编进固件的 LuCI 插件（APK 装不上，改为直接内置）----------------
-#   * 风扇控制 + RGB 状态灯【SBE 同款精致版，两个独立菜单，全放「系统」下】：
-#     系统→风扇控制(admin/system/fan) / 系统→RGB 状态灯(admin/system/led)，
-#     视图+菜单+ACL 由 user-files 提供，后端复用同一份 xiaomi-control.uc。
-#     上游单体菜单「控制→Xiaomi Control」用空 JSON 覆盖中和（见上）。
-#   * luci-app-route-tool（数码罗记第三方分区/网速/存储工具）：
-#     controller/view + usr/libexec/route-tool*（user-files），菜单「系统→Route Tool」。
-#   * 已按要求去掉 eMMC 健康检测（后端/前端/菜单/ACL 全删）。
+# 【OWRT 是字面量，严禁替换成 ImmortalWRT】
+# 上游 luci-app-router-tool 靠 wireless.uc 里的 "iface.ssid != 'OWRT'" 判断
+# 「未被修改过的默认 AP」；只有匹配才会执行初始化。上一版在这里对
+# ./package/emortal/luci-app-router-tool/ 做了全局替换，把判断改成
+# 'ImmortalWRT'，导致 router-tool 跳过初始化、无线默认失效 —— 已彻底撤销。
+# 用户强调：是 OWRT，不是 OpenWrt。四个字母，一个都不能改。
 
 echo "========== PRIVATE.sh done =========="
