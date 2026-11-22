@@ -47,17 +47,26 @@ mk_one emmc-health luci-app-emmc-health 1.1.3-r1 \
   "GPL-3.0-only" \
   "luci-base rpcd-mod-file"
 
-# 精致风格 = 经典版的同名升级替换包（包名同为 luci-app-xiaomi-control，版本更高 r7）。
-# 这样 apk 当作升级覆盖：不再有文件冲突、不再出现两个菜单、无需手动卸载。
-mk_one be10000-fanrgb luci-app-xiaomi-control 20261122-r7 \
-  "BE10000 Fan and RGB control - refined SBE-style UI (replaces classic)" \
+# 拆分方案（两套风格各自独立模块，SBE 同款界面，共用 xiaomi-control 上游后端）：
+#  - 风扇包 = 同名升级 luci-app-xiaomi-control（版本更高 r8），自带完整后端 + 风扇控制视图/菜单。
+#            同名确保覆盖当前 r7、不冲突、旧的单体菜单自动消失。
+#  - 灯包   = 独立新包 luci-app-be10000-led，纯界面，复用风扇包/固件的后端，零文件冲突。
+# 两个包可同时装、也可分开装；菜单严格为「风扇控制」「RGB 状态灯」。
+mk_one be10000-fan luci-app-xiaomi-control 20261122-r8 \
+  "BE10000 fan control - SBE1V1K style UI, with upstream backend" \
   "https://github.com/VIKINGYFY/immortalwrt" \
   "GPL-2.0-or-later" \
   "luci-base rpcd-mod-file ucode ucode-mod-ubus"
 
-# 经典风格保留为回退包（低版本 r6，需要时用 --allow-downgrade 装回去）
-mk_one xiaomi-control-classic luci-app-xiaomi-control 20261122-r6 \
-  "BE10000 Fan and RGB control - OWRT native style improved UI" \
+mk_one be10000-led luci-app-be10000-led 1.0.0-r1 \
+  "BE10000 RGB status light - SBE1V1K style UI, reuses xiaomi-control backend" \
+  "https://github.com/VIKINGYFY/immortalwrt" \
+  "GPL-2.0-or-later" \
+  "luci-base rpcd-mod-file ucode ucode-mod-ubus"
+
+# 旧单体精致版/经典版作为回退保留（低版本，需要时用 --allow-downgrade 装回）
+mk_one be10000-fanrgb luci-app-xiaomi-control 20261122-r7 \
+  "BE10000 Fan and RGB control - refined SBE-style UI (legacy single panel)" \
   "https://github.com/VIKINGYFY/immortalwrt" \
   "GPL-2.0-or-later" \
   "luci-base rpcd-mod-file ucode ucode-mod-ubus"
@@ -74,25 +83,32 @@ for dep in luci-base rpcd-mod-file ucode ucode-mod-ubus; do
     --info "description:stub $dep" --files "$STUB/root_$dep" \
     --output "$STUB/${dep}-1.0-r0.apk"
 done
-# 决定性验证：先装经典版再升级到精致版（同名包覆盖），确认零冲突、只剩一份菜单/视图
-echo "--- 决定性验证: 桩包 + eMMC + 经典版(r6) ---"
+# 决定性验证：旧单体 r7 -> 拆分的 风扇包 r8 + 灯包，确认零冲突、一份后端、两个独立菜单/视图
+echo "--- 决定性验证: 桩包 + eMMC + 旧单体 r7 ---"
 VROOT=/work/vroot
 rm -rf "$VROOT"; mkdir -p "$VROOT"
 apk add --root "$VROOT" --initdb --allow-untrusted 2>&1 || true
 apk add --root "$VROOT" --allow-untrusted --no-scripts \
   "$STUB"/*.apk \
   "$OUT"/luci-app-emmc-health_*.apk \
-  "$OUT"/luci-app-xiaomi-control_20261122-r6.apk 2>&1 || echo "  [安装返回非0]"
-echo "--- 已装(应为 r6) ---"
+  "$OUT"/luci-app-xiaomi-control_20261122-r7.apk 2>&1 || echo "  [安装返回非0]"
+echo "--- 已装(应为 r7) ---"
 apk info --root "$VROOT" 2>/dev/null | grep -E 'xiaomi-control|emmc' || true
 
-echo "--- 升级到精致版(r7)，同名覆盖，应无 conflict ---"
+echo "--- 升级到拆分风扇包(r8)，同名覆盖应无 conflict ---"
 apk add --root "$VROOT" --allow-untrusted --no-scripts \
-  "$OUT"/luci-app-xiaomi-control_20261122-r7.apk 2>&1 || echo "  [升级返回非0]"
-echo "--- 已装(应为 r7，且只有一个 xiaomi-control) ---"
-apk info --root "$VROOT" 2>/dev/null | grep -E 'xiaomi-control|emmc' || true
-echo "--- 后端+菜单落地（应只有一份 be10000-fanrgb 视图，无重复菜单）---"
-find "$VROOT" -type f | grep -E 'xiaomi-control.uc|xiaomi-nfc.uc|init.d/xiaomi-control|config/xiaomi-control|menu.d|luci-static' | sort | head -30
-echo "--- menu 视图数量（应为1）---"
-find "$VROOT" -type f -path '*luci-static/resources/view/*' | grep -cE 'fanrgb|xiaomi-control' || true
+  "$OUT"/luci-app-xiaomi-control_20261122-r8.apk 2>&1 || echo "  [升级返回非0]"
+
+echo "--- 再装独立灯包，应与风扇包零冲突共存 ---"
+apk add --root "$VROOT" --allow-untrusted --no-scripts \
+  "$OUT"/luci-app-be10000-led_1.0.0-r1.apk 2>&1 || echo "  [灯包返回非0]"
+
+echo "--- 已装(应为 xiaomi-control-r8 + be10000-led-r1 + emmc) ---"
+apk info --root "$VROOT" 2>/dev/null | grep -E 'xiaomi-control|be10000-led|emmc' || true
+echo "--- 落地文件：一份后端 + 两个菜单 + 两个视图 ---"
+find "$VROOT" -type f | grep -E 'xiaomi-control.uc|xiaomi-nfc.uc|init.d/xiaomi-control|config/xiaomi-control|menu.d|luci-static' | sort | head -40
+echo "--- 后端份数（uc 应为1）---"
+find "$VROOT" -type f -name 'xiaomi-control.uc' | wc -l
+echo "--- 视图数量（应为2: fan + led）---"
+find "$VROOT" -type f -path '*luci-static/resources/view/be10000/*' | sort
 echo "VERIFY DONE"
