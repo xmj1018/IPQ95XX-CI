@@ -197,8 +197,8 @@ return view.extend({
 	},
 
 	render: function(data) {
-		const m = new form.Map('xiaomi-control', _('风扇与灯效'),
-			_('小米 BE10000 风扇转速与 RGB 灯效控制面板，由上游硬件控制器驱动。'));
+		const m = new form.Map('xiaomi-control', _('风扇灯光控制'),
+			_('小米 BE10000 风扇与灯光控制面板，实时数据自动刷新，修改后点应用即生效。'));
 		const s = m.section(form.NamedSection, 'settings', 'control');
 		s.addremove = false;
 		this.fanStatus = E('div', {}, _('正在收集数据…'));
