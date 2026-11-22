@@ -1,0 +1,17 @@
+{
+	"be10000-fanrgb": {
+		"description": "BE10000 Fan & RGB control (SBE-style UI), backed by upstream xiaomi-control",
+		"read": {
+			"uci": [ "xiaomi-control" ],
+			"ubus": { "service": [ "list" ], "system": [ "board" ], "file": [ "read" ] },
+			"file": {
+				"/var/run/xiaomi-control.json": [ "read" ],
+				"/tmp/run/xiaomi-control.json": [ "read" ]
+			}
+		},
+		"write": {
+			"uci": [ "xiaomi-control" ],
+			"ubus": { "service": [ "restart" ] }
+		}
+	}
+}
