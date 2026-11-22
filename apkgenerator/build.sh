@@ -47,12 +47,15 @@ mk_one emmc-health luci-app-emmc-health 1.1.3-r1 \
   "GPL-3.0-only" \
   "luci-base rpcd-mod-file"
 
-mk_one be10000-fanrgb luci-app-be10000-fanrgb 1.0.0-r6 \
-  "BE10000 Fan and RGB control SBE1V1K style UI" \
+# 精致风格 = 经典版的同名升级替换包（包名同为 luci-app-xiaomi-control，版本更高 r7）。
+# 这样 apk 当作升级覆盖：不再有文件冲突、不再出现两个菜单、无需手动卸载。
+mk_one be10000-fanrgb luci-app-xiaomi-control 20261122-r7 \
+  "BE10000 Fan and RGB control - refined SBE-style UI (replaces classic)" \
   "https://github.com/VIKINGYFY/immortalwrt" \
   "GPL-2.0-or-later" \
   "luci-base rpcd-mod-file ucode ucode-mod-ubus"
 
+# 经典风格保留为回退包（低版本 r6，需要时用 --allow-downgrade 装回去）
 mk_one xiaomi-control-classic luci-app-xiaomi-control 20261122-r6 \
   "BE10000 Fan and RGB control - OWRT native style improved UI" \
   "https://github.com/VIKINGYFY/immortalwrt" \
@@ -71,28 +74,25 @@ for dep in luci-base rpcd-mod-file ucode ucode-mod-ubus; do
     --info "description:stub $dep" --files "$STUB/root_$dep" \
     --output "$STUB/${dep}-1.0-r0.apk"
 done
-# 经典版与精致版后端文件同名（二者二选一，不可同装），故各自独立 root 验证
-echo "--- 决定性验证 A: 桩包 + eMMC + 经典版 ---"
-VROOT=/work/vroot_a
+# 决定性验证：先装经典版再升级到精致版（同名包覆盖），确认零冲突、只剩一份菜单/视图
+echo "--- 决定性验证: 桩包 + eMMC + 经典版(r6) ---"
+VROOT=/work/vroot
 rm -rf "$VROOT"; mkdir -p "$VROOT"
 apk add --root "$VROOT" --initdb --allow-untrusted 2>&1 || true
 apk add --root "$VROOT" --allow-untrusted --no-scripts \
   "$STUB"/*.apk \
   "$OUT"/luci-app-emmc-health_*.apk \
-  "$OUT"/luci-app-xiaomi-control_*.apk 2>&1 || echo "  [安装返回非0]"
-apk info --root "$VROOT" 2>/dev/null || true
-echo "--- A 后端文件落地 ---"
-find "$VROOT" -type f | grep -E 'xiaomi-control.uc|xiaomi-nfc.uc|init.d/xiaomi-control|config/xiaomi-control|menu.d|luci-static' | head -30
+  "$OUT"/luci-app-xiaomi-control_20261122-r6.apk 2>&1 || echo "  [安装返回非0]"
+echo "--- 已装(应为 r6) ---"
+apk info --root "$VROOT" 2>/dev/null | grep -E 'xiaomi-control|emmc' || true
 
-echo "--- 决定性验证 B: 桩包 + eMMC + 精致版 ---"
-VROOT=/work/vroot_b
-rm -rf "$VROOT"; mkdir -p "$VROOT"
-apk add --root "$VROOT" --initdb --allow-untrusted 2>&1 || true
+echo "--- 升级到精致版(r7)，同名覆盖，应无 conflict ---"
 apk add --root "$VROOT" --allow-untrusted --no-scripts \
-  "$STUB"/*.apk \
-  "$OUT"/luci-app-emmc-health_*.apk \
-  "$OUT"/luci-app-be10000-fanrgb_*.apk 2>&1 || echo "  [安装返回非0]"
-apk info --root "$VROOT" 2>/dev/null || true
-echo "--- B 后端文件落地 ---"
-find "$VROOT" -type f | grep -E 'xiaomi-control.uc|xiaomi-nfc.uc|init.d/xiaomi-control|config/xiaomi-control|menu.d|luci-static' | head -30
+  "$OUT"/luci-app-xiaomi-control_20261122-r7.apk 2>&1 || echo "  [升级返回非0]"
+echo "--- 已装(应为 r7，且只有一个 xiaomi-control) ---"
+apk info --root "$VROOT" 2>/dev/null | grep -E 'xiaomi-control|emmc' || true
+echo "--- 后端+菜单落地（应只有一份 be10000-fanrgb 视图，无重复菜单）---"
+find "$VROOT" -type f | grep -E 'xiaomi-control.uc|xiaomi-nfc.uc|init.d/xiaomi-control|config/xiaomi-control|menu.d|luci-static' | sort | head -30
+echo "--- menu 视图数量（应为1）---"
+find "$VROOT" -type f -path '*luci-static/resources/view/*' | grep -cE 'fanrgb|xiaomi-control' || true
 echo "VERIFY DONE"
