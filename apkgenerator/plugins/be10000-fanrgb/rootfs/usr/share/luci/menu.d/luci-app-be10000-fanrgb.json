@@ -14,8 +14,7 @@
 			"path": "be10000-fanrgb"
 		},
 		"depends": {
-			"acl": [ "be10000-fanrgb" ],
-			"uci": { "xiaomi-control": true }
+			"acl": [ "be10000-fanrgb" ]
 		}
 	}
 }
