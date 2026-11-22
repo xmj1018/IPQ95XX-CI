@@ -148,9 +148,9 @@ return view.extend({
 		set('night_end', document.getElementById('in-night-off')?.value || '07:00');
 		set('night_brightness', document.getElementById('in-nightbright')?.value);
 		uci.save('xiaomi-control');
-		return uci.apply('xiaomi-control').then(function() {
-			return L.resolveDefault(callServiceRestart('xiaomi-control'), null);
-		}).then(function() {
+		/* 不用 uci.apply：该 config 未在 ucitrack 注册，apply 会返回 ubus code 5 弹红条。
+		   真正让新参数生效的是重启后端进程（它启动时会一次性读配置）。 */
+		return L.resolveDefault(callServiceRestart('xiaomi-control'), null).then(function() {
 			ui.addNotification('已应用', '灯效参数已保存并重载，稍后自动生效。');
 			setTimeout(function() { self.refresh(); }, 1200);
 		}).catch(function(e) {
