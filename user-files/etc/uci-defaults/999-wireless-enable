@@ -1,0 +1,11 @@
+#!/bin/sh
+# 刷完机无线一定处于打开状态（兜底、幂等，最后执行）
+# 只删除 wireless 各节的 disabled 选项：
+#   - 不改 SSID（三频名由上游 router-tool 依 OWRT 字面量自动初始化）
+#   - 不 sed 任何上游源码、不手写 /etc/config/wireless（避免破坏三频探测）
+#   - 生成器默认 disabled='0'，此处再清一次，防止任何环节把它设成 1
+for s in $(uci -q show wireless 2>/dev/null | sed -n 's/^wireless\.\([^.=]*\)=.*/\1/p' | sort -u); do
+    uci -q delete "wireless.$s.disabled" 2>/dev/null || :
+done
+uci -q commit wireless 2>/dev/null || :
+exit 0
