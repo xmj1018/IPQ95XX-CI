@@ -6,8 +6,10 @@
 # 界面只有一个「风扇控制」+ 一个「RGB 状态灯」。
 #
 # 配方照旧（用户：正常保留这个配置就行）：
-#   honk + OAF + iStoreOS 风格 + HomeProxyRE + 新版 Argon(万兆同款 woff2 字体)
+#   honk + OAF + iStoreOS 风格 + HomeProxyRE + bootstrap 主题
 #   + luci-app-sbe1v1k + luci-app-router-tool(上游自带) + OpenClash
+# 2026-11-23 用户指令：不再编译 luci-theme-argon / luci-app-argon-config，
+#   默认主题改 bootstrap；从万兆提取的 woff2 字体与全套模板文件仍原样保留进 rootfs。
 # OpenClash 源码由官方 Scripts/Packages.sh 的
 #   UPDATE_PACKAGE "openclash" "vernesong/OpenClash" "dev" "pkg"
 # 克隆，这里【不要重复克隆】，只需在 PRIVATE.txt 里把
@@ -94,7 +96,19 @@ if [ -d "$GITHUB_WORKSPACE/user-files" ]; then
          ./files/www/luci-static/resources/view/system/led-trigger \
          ./files/www/luci-static/resources/view/sbehw 2>/dev/null || :
 
-  echo "new Argon(woff2) + sbe1v1k ONLY overlaid: $(find ./files -type f | wc -l) files"
+  # 2026-11-23 用户指令：换 bootstrap 主题，不编译 luci-theme-argon / argon-config。
+  # 本地 user-files 里那套从万兆提取的 woff2 字体与模板【原样保留、一个字节都不删】，
+  # 仍会打进 rootfs（以后自行从源装 Argon 时可直接用）。但 Argon 主题自带的
+  # 30_luci-theme-argon 开机脚本会 uci set luci.main.mediaurlbase=/luci-static/argon，
+  # 把默认主题强行指回 Argon，导致 WRT_THEME=bootstrap 不生效。
+  # 这里只从【编译产物 ./files】里剔除下面两个"主题注册/配置"文件，
+  # 不触碰本地 user-files 任何文件：所有 woff2 字体、.ut 模板、静态资源全部保留。
+  # 去掉 /etc/config/argon 后，Argon Config 菜单因 depends(uci argon) 不满足而不显示，
+  # 等于把用户说的"argon-config 也移除"落地，而字体与模板一个字节都不删。
+  rm -f ./files/etc/uci-defaults/30_luci-theme-argon \
+        ./files/etc/config/argon 2>/dev/null || :
+
+  echo "bootstrap theme (woff2 fonts kept in rootfs) + sbe1v1k ONLY: $(find ./files -type f | wc -l) files"
 else
   echo "WARN: user-files not found, skip overlay"
 fi
