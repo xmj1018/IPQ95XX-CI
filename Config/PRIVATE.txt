@@ -1,17 +1,18 @@
 # ============================================================
 # PRIVATE.txt - 小米万兆 BE10000 【单机型】精简版（目标 ~80-90MB，能启动）
-# 2026-11-22 用户指令：一个一个来，这次只编 xiaomi_be10000。
-#   品牌 hostname = LibWrt（左上角 / 登录页文字，由 workflow WRT_NAME 设置）
-#    Argon 主题：照抄 LibWrt 样机新版（sbwml/luci-theme-argon openwrt-25.12），
+# 2026-11-22 用户【最终定稿】指令：一个一个来，这次只编 xiaomi_be10000。
+#   品牌 hostname = BE10000（左上角 / 登录页文字，由 workflow WRT_NAME 设置）
+#   后台地址 = 192.168.100.1（workflow WRT_IP）。
+#   Argon 主题：新版（sbwml/luci-theme-argon openwrt-25.12），
 #    user-files 覆盖新版 argon 91 文件（模板/字体/css/图标）。
-#   不加自研风扇/RGB 插件：保留上游 luci-app-xiaomi-control 原样（RGB/风扇）。
-#   无线：照抄上游默认 OWRT-2.4G/5.2G/5.8G + 12345678，默认开启，192.168.10.1。
-# 配方与 SBE 一致：honk + OAF + iStoreOS 风格 + HomeProxyRE + Argon 默认主题
-#   + 新版 Argon 字体排版 + luci-app-router-tool(上游自带) + OpenClash。
-# 不加：自研 be10000-hwctrl / sbe1v1k / Docker / 36 插件全集。
-# 2026-11-22 追加（APK 装不上，改为编进固件）：user-files 内置
-#   luci-app-be10000-fanrgb（SBE 同款精致版界面，复用上游 xiaomi-control 后端）
-#   + eMMC 健康检测（emmc-health 后端/前端/菜单/ACL，mmc-utils 已内置）。
+#   无线三频：BE10000-2.4G / BE10000-5.2G / BE10000-5.8G + 12345678，默认开启；
+#     SSID 前缀由 91-ssid-model-prefix 填 router-tool.defaults 实现，OWRT 字面量不动。
+#   风扇/RGB：拆成两个独立菜单，全部放「系统」下（SBE1V1K 同款精致界面）：
+#     系统→风扇控制(admin/system/fan) + 系统→RGB 状态灯(admin/system/led)，
+#     共用上游 xiaomi-control 后端（一个进程控风扇+灯）。上游单体菜单 JSON 用空文件覆盖中和。
+#   route-tool：加数码罗记第三方分区工具（user-files + gdisk），菜单也在「系统」下。
+# 配方与 SBE 一致：honk + OAF + iStoreOS 风格 + HomeProxyRE + Argon + 上游 router-tool + OpenClash。
+# 不加：自研 be10000-hwctrl / sbe1v1k / Docker / eMMC-health / 36 插件全集。
 # ============================================================
 
 # ---------- honk 内核硬性要求（BTF 关键，缺 BTF 无法加载 eBPF）----------
@@ -118,17 +119,37 @@ CONFIG_PACKAGE_zlib=y
 # ---------- rpcd-mod-file（通用依赖，保留） ----------
 CONFIG_PACKAGE_rpcd-mod-file=y
 
-# ---------- 上游自带硬件控制（万兆）：luci-app-xiaomi-control 原样保留 ----------
-# 不删、不改名、不禁用、不覆盖上游作者的 RGB/风扇控制。
+# ---------- 上游自带硬件控制（万兆）：luci-app-xiaomi-control 后端保留 ----------
+# 后端必留：一个 xiaomi-control.uc 同时控风扇+LED，写 /var/run/xiaomi-control.json。
 # 上游 DTS 已有 emc2305(I2C 风扇) + pwm-leds(:ambient)，基线设 =m，这里补 =y 让
-# 上游 xiaomi-control 真能控制风扇/灯（照抄上游默认能力，不是自研插件）。
+# 后端真能控制风扇/灯。Makefile 依赖的 ucode/i2c-tools 全套必须一并内置。
+# 上游自带的单体菜单「控制→Xiaomi Control」由 user-files 同名空 JSON 覆盖中和，
+# 界面只在「系统」下出现「风扇控制」「RGB 状态灯」两个独立精致菜单。
 CONFIG_PACKAGE_luci-app-xiaomi-control=y
 CONFIG_PACKAGE_kmod-hwmon-emc2305=y
 CONFIG_PACKAGE_kmod-leds-pwm=y
+CONFIG_PACKAGE_ucode=y
+CONFIG_PACKAGE_ucode-mod-fs=y
+CONFIG_PACKAGE_ucode-mod-uci=y
+CONFIG_PACKAGE_ucode-mod-uloop=y
+CONFIG_PACKAGE_ucode-mod-ubus=y
+CONFIG_PACKAGE_i2c-tools=y
+CONFIG_PACKAGE_kmod-i2c-core=y
 
-# ---------- luci-app-route-tool（用户口头写法）= 上游自带 luci-app-router-tool ----------
+# ---------- 风扇/RGB 两个独立精致菜单（SBE 同款，全放「系统」下）----------
+# 由 user-files 覆盖层提供，视图+菜单+ACL，后端复用上面的 xiaomi-control：
+#   系统→风扇控制(admin/system/fan, order 95) + 系统→RGB 状态灯(admin/system/led, order 96)
+#   应用保存改为 uci.save + service restart，不再调 uci.apply（避免 ubus code 5 红条）。
+
+# ---------- luci-app-router-tool（上游自带，管 SSID 初始化）----------
 CONFIG_PACKAGE_luci-app-router-tool=y
 CONFIG_PACKAGE_luci-i18n-router-tool-zh-cn=y
+
+# ---------- luci-app-route-tool（数码罗记第三方分区工具，rothdren-lion）----------
+# 老式 Lua 插件，作为 user-files 覆盖层内置（controller/view + usr/libexec/route-tool*）。
+# 依赖 luci-base/luci-compat/lua/luci-lib-nixio —— 均已由基础/OpenClash 带入。
+# GPT 分区备份/写入需要 sgdisk（来自 gdisk），内置以免在线装依赖。菜单在「系统」下。
+CONFIG_PACKAGE_gdisk=y
 
 # ---------- OpenClash（全套依赖内置，与 SBE 一致） ----------
 # 源码由官方 Scripts/Packages.sh 的
