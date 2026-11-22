@@ -1,18 +1,23 @@
 #!/bin/sh
 # luci-app-be10000-fanrgb 安装后处理（SBE 风格界面版）
-# 本包只提供新界面 + 菜单 + ACL；后端复用 OWRT 上游 luci-app-xiaomi-control
-# 的 xiaomi-control.uc（固件已内置或由上一版 APK 提供），硬件控制参数完全共用。
+# 自带完整后端（xiaomi-control.uc / xiaomi-nfc.uc / init / config），
+# 不依赖固件里是否已装上游 luci-app-xiaomi-control。
 
-# 1. 让新 ACL / 新菜单 / 新界面立即生效
+# 1. 修正关键脚本可执行位（apk 解包可能丢位）
+chmod 755 /etc/init.d/xiaomi-control 2>/dev/null || :
+chmod 755 /usr/libexec/xiaomi-control.uc /usr/libexec/xiaomi-nfc.uc 2>/dev/null || :
+
+# 2. 无条件启用并启动后端守护（风扇 + RGB 真生效）
+#    之前写成 "enabled && restart"——新装时服务从未 enable，enabled 返回失败，
+#    整块被跳过导致服务不启动、页面数据全为 —。改为 enable + start。
+if [ -x /etc/init.d/xiaomi-control ]; then
+	/etc/init.d/xiaomi-control enable >/dev/null 2>&1 || :
+	/etc/init.d/xiaomi-control start  >/dev/null 2>&1 || :
+fi
+
+# 3. 让新菜单 / 新 ACL / 新界面立即生效
 rm -f /tmp/luci-indexcache* 2>/dev/null || :
 rm -rf /tmp/luci-modulecache/* 2>/dev/null || :
 [ -x /etc/init.d/rpcd ] && /etc/init.d/rpcd restart >/dev/null 2>&1 || :
-
-# 2. 确保上游后端在运行（若固件里已有且已启用则此步无副作用）
-if [ -x /etc/init.d/xiaomi-control ]; then
-	/etc/init.d/xiaomi-control enabled >/dev/null 2>&1 && {
-		/etc/init.d/xiaomi-control restart >/dev/null 2>&1 || :
-	}
-fi
 
 exit 0
