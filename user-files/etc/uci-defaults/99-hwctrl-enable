@@ -1,23 +1,8 @@
 #!/bin/sh
-# SBE1V1K 单机型固件：开机启用本机风扇/RGB 守护。
-# 本固件只内置 luci-app-sbe1v1k 一套插件，rootfs 里没有任何万兆 BE10000 的文件。
-# init 内仍有 board_name + pwmfan/:status 硬件守卫，非本机不会启动守护。
-
+# 开机启用 SBE1V1K 风扇与 RGB 状态灯守护（init 自带 board_name 硬件守卫）
 for s in fanctl ledctl; do
-	[ -x "/etc/init.d/$s" ] || continue
-	"/etc/init.d/$s" enable >/dev/null 2>&1 || :
+    [ -x "/etc/init.d/$s" ] && "/etc/init.d/$s" enable >/dev/null 2>&1
 done
-
-# 固件若自带旧版风扇/RGB 界面，禁用其菜单，避免出现重复菜单。
-# 只改名不删除，随时可恢复。
-for f in /usr/share/luci/menu.d/luci-app-fan.json \
-         /usr/share/luci/menu.d/luci-app-led.json \
-         /usr/share/luci/menu.d/luci-app-sbehw.json; do
-	[ -f "$f" ] && mv "$f" "$f.disabled-by-hwctrl" 2>/dev/null || :
-done
-
-# 让新装的菜单 / ACL 立刻被 LuCI 与 rpcd 识别
 rm -f /tmp/luci-indexcache* /tmp/luci-modulecache/* 2>/dev/null || :
 [ -x /etc/init.d/rpcd ] && /etc/init.d/rpcd restart >/dev/null 2>&1 || :
-
 exit 0
