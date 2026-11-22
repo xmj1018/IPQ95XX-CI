@@ -39,10 +39,10 @@ function stat(label, value, color) {
 
 function nfcOptions(section) {
 	section.tab('nfc', 'NFC');
-	let o = section.taboption('nfc', form.DummyValue, '_nfc_status', _('Runtime status'));
+	let o = section.taboption('nfc', form.DummyValue, '_nfc_status', _('运行状态'));
 	o.renderWidget = function() { return section.map.nfcStatus; };
-	o = section.taboption('nfc', form.Flag, 'nfc_enabled', _('Enable NFC'),
-		_('Disabling NFC clears the tag. Saved content is restored at boot and when wireless settings change. WPA3-only networks are not supported.'));
+	o = section.taboption('nfc', form.Flag, 'nfc_enabled', _('启用 NFC'),
+		_('关闭 NFC 会清除标签内容；开机或无线设置变化时会自动恢复已保存内容。不支持仅 WPA3 的网络。'));
 	o.default = '0';
 	o.rmempty = false;
 	function option(type, name, title, mode) {
@@ -52,12 +52,12 @@ function nfcOptions(section) {
 		return value;
 	}
 	const size = function(value) { return new TextEncoder().encode(value || '').length; };
-	o = option(form.ListValue, 'mode', _('Tag content'));
-	[ [ 'wifi', _('Router Wi-Fi') ], [ 'text', _('Text') ],
-		[ 'uri', _('Link (URI)') ], [ 'manual', _('Manual Wi-Fi') ] ].forEach(function(entry) { o.value(entry[0], entry[1]); });
+	o = option(form.ListValue, 'mode', _('标签内容'));
+	[ [ 'wifi', _('当前路由器 Wi-Fi') ], [ 'text', _('自定义文本') ],
+		[ 'uri', _('网址链接 (URI)') ], [ 'manual', _('手动填写 Wi-Fi') ] ].forEach(function(entry) { o.value(entry[0], entry[1]); });
 	o.default = 'wifi';
 	o.rmempty = false;
-	o = option(form.ListValue, 'iface', _('Access point'), 'wifi');
+	o = option(form.ListValue, 'iface', _('接入点 (AP)'), 'wifi');
 	uci.sections('wireless', 'wifi-iface').forEach(function(ap) {
 		if (ap.mode === 'ap') o.value(ap['.name'], '%s · %s'.format(ap.ssid || ap['.name'], ap.device || ''));
 	});
@@ -67,30 +67,30 @@ function nfcOptions(section) {
 		return !!(ap && ap.mode === 'ap' && ap.disabled !== '1' && radios.length &&
 			radios.every(function(id) { return uci.get('wireless', id) && uci.get('wireless', id, 'disabled') !== '1'; }) &&
 			/^(none|psk(?:\+tkip)?|psk2(?:\+(?:ccmp|aes))?|(?:psk|sae)-mixed(?:\+ccmp)?)$/.test(ap.encryption || 'none')) ||
-			_('Selected AP is unavailable or uses unsupported security.');
+			_('所选接入点不可用或加密方式不受支持。');
 	};
-	o = option(form.TextValue, 'text', _('Text'), 'text');
+	o = option(form.TextValue, 'text', _('自定义文本'), 'text');
 	o.rows = 6;
-	o.description = _('Maximum 1900 UTF-8 bytes.');
-	o.validate = function(section_id, value) { return (size(value) > 0 && size(value) <= 1900) || _('Text must contain 1–1900 UTF-8 bytes.'); };
-	o = option(form.Value, 'uri', _('URL'), 'uri');
+	o.description = _('最多 1900 个 UTF-8 字节。');
+	o.validate = function(section_id, value) { return (size(value) > 0 && size(value) <= 1900) || _('文本长度须为 1–1900 个 UTF-8 字节。'); };
+	o = option(form.Value, 'uri', _('网址'), 'uri');
 	o.placeholder = 'https://example.com';
 	o.validate = function(section_id, value) {
-		return (size(value) <= 1900 && /^[a-zA-Z][a-zA-Z0-9+.-]*:[^\s\x00-\x1f\x7f]*$/.test(value || '')) || _('Enter a valid URI (up to 1900 UTF-8 bytes).');
+		return (size(value) <= 1900 && /^[a-zA-Z][a-zA-Z0-9+.-]*:[^\s\x00-\x1f\x7f]*$/.test(value || '')) || _('请输入有效 URI，最多 1900 个 UTF-8 字节。');
 	};
-	o = option(form.Value, 'manual_ssid', _('Network name (SSID)'), 'manual');
-	o.validate = function(section_id, value) { return (size(value) > 0 && size(value) <= 32) || _('SSID must contain 1–32 UTF-8 bytes.'); };
-	const security = option(form.ListValue, 'security', _('Encryption'), 'manual');
+	o = option(form.Value, 'manual_ssid', _('网络名称 (SSID)'), 'manual');
+	o.validate = function(section_id, value) { return (size(value) > 0 && size(value) <= 32) || _('SSID 长度须为 1–32 个 UTF-8 字节。'); };
+	const security = option(form.ListValue, 'security', _('加密方式'), 'manual');
 	security.value('wpa2', 'WPA2-Personal');
-	security.value('none', _('No password'));
+	security.value('none', _('无密码'));
 	security.default = 'wpa2';
 	security.rmempty = false;
-	o = section.taboption('nfc', form.Value, 'nfc_manual_key', _('Password'));
+	o = section.taboption('nfc', form.Value, 'nfc_manual_key', _('密码'));
 	o.password = true;
 	o.retain = true;
 	o.depends({ nfc_enabled: '1', nfc_mode: 'manual', nfc_security: 'wpa2' });
 	o.validate = function(section_id, value) {
-		return ((size(value) >= 8 && size(value) <= 63) || /^[a-fA-F0-9]{64}$/.test(value || '')) || _('Password must contain 8–63 bytes or 64 hexadecimal digits.');
+		return ((size(value) >= 8 && size(value) <= 63) || /^[a-fA-F0-9]{64}$/.test(value || '')) || _('密码须为 8–63 个字节或 64 位十六进制数。');
 	};
 }
 
@@ -100,7 +100,7 @@ const ColorValue = form.Value.extend({
 		const widget = this.super('renderWidget', [ section_id, option_index, value ]);
 		const input = widget.querySelector('input') || widget;
 		const picker = E('input', {
-			type: 'color', value: value, title: _('Choose a color'),
+			type: 'color', value: value, title: _('选择颜色'),
 			style: 'width:3.5em;height:2.2em;margin-left:.5em;border:none;background:none;cursor:pointer',
 			change: function(ev) {
 				input.value = ev.target.value;
@@ -116,34 +116,34 @@ const ColorValue = form.Value.extend({
 });
 
 function validateColor(section_id, value) {
-	return /^#[0-9a-fA-F]{6}$/.test(value || '') || _('Enter a color in #RRGGBB format.');
+	return /^#[0-9a-fA-F]{6}$/.test(value || '') || _('请输入 #RRGGBB 格式的颜色值。');
 }
 
 function validateTime(section_id, value) {
-	return /^([01][0-9]|2[0-3]):[0-5][0-9]$/.test(value || '') || _('Enter a time in HH:MM format.');
+	return /^([01][0-9]|2[0-3]):[0-5][0-9]$/.test(value || '') || _('请输入 HH:MM 格式的时间。');
 }
 
 function fault(error) {
 	const messages = {
-		'fan-unavailable': _('Fan controller unavailable'),
-		'temperature-unavailable': _('Temperature unavailable; requesting full fan speed'),
-		'pwm-read-failed': _('Unable to read fan output; requesting full speed'),
-		'pwm-write-failed': _('Unable to confirm fan output; requesting full speed'),
-		'fan-stalled': _('Fan stalled; requesting full speed'),
-		'fan-control-failed': _('Fan control failed; requesting full speed'),
-		'led-write-failed': _('Unable to write RGB lighting output'),
-		'led-control-failed': _('RGB lighting control failed')
+		'fan-unavailable': _('风扇控制器不可用'),
+		'temperature-unavailable': _('无法读取温度，正在请求风扇全速'),
+		'pwm-read-failed': _('无法读取风扇输出，正在请求全速'),
+		'pwm-write-failed': _('无法确认风扇输出，正在请求全速'),
+		'fan-stalled': _('风扇堵转，正在请求全速'),
+		'fan-control-failed': _('风扇控制异常，正在请求全速'),
+		'led-write-failed': _('无法写入 RGB 灯光输出'),
+		'led-control-failed': _('RGB 灯光控制异常')
 	};
-	return error ? (messages[error] || _('Unknown error')) : _('None');
+	return error ? (messages[error] || _('未知错误')) : _('无');
 }
 
 function nfcFault(error) {
 	const rollback = ' NFC rollback failed.';
 	const invalid = 'Invalid NFC option: ';
 	if (error.endsWith(rollback))
-		return '%s %s'.format(nfcFault(error.slice(0, -rollback.length)), _('NFC rollback failed.'));
+		return '%s %s'.format(nfcFault(error.slice(0, -rollback.length)), _('NFC 回滚失败。'));
 	if (error.startsWith(invalid))
-		return _('Invalid NFC option: %s').format(error.slice(invalid.length));
+		return _('NFC 选项无效：%s').format(error.slice(invalid.length));
 	return _(error);
 }
 
@@ -173,71 +173,71 @@ return view.extend({
 			const led = running ? (status.led || {}) : {};
 			let nfc = {};
 			try { nfc = JSON.parse(result[2]); } catch (e) { /* Not ready. */ }
-			dom.content(this.nfcStatus, nfc.error ? nfcFault(nfc.error) : !nfc.available ? _('NFC hardware unavailable.') :
-				nfc.enabled ? _('Written.') : _('NFC disabled.'));
+			dom.content(this.nfcStatus, nfc.error ? nfcFault(nfc.error) : !nfc.available ? _('NFC 硬件不可用。') :
+				nfc.enabled ? _('已写入 NFC 标签。') : _('NFC 已关闭。'));
 
 			const reading = function(value, format) {
 				return typeof value == 'number' && Number.isFinite(value) && value >= 0 ? format(value) : '-';
 			};
-			const badge = running ? '🟢 ' + _('Running') : '🔴 ' + _('Stopped');
+			const badge = running ? '🟢 ' + _('运行中') : '🔴 ' + _('已停止');
 			dom.content(this.fanBadge, badge);
 
 			dom.content(this.fanStats, E('div', { 'style': STATS_STYLE }, [
-				stat(_('Temperature'), reading(fan.temperature, function(v) { return '%.1f °C'.format(v / 1000); }), '#e0741a'),
-				stat(_('Fan speed'), reading(fan.rpm, function(v) { return '%d RPM'.format(v); }), '#2e9e5b'),
-				stat(_('PWM output'), reading(fan.pwm, function(v) { return '%d / 255 (%d%%)'.format(v, Math.round(v * 100 / 255)); }), '#4a90d9'),
-				stat(_('Hottest sensor'), fan.sensor || '-', '#8e6fd0'),
-				stat(_('Valid sensors'), reading(fan.sensors, String), '#c05a9e'),
-				stat(_('Fault'), running && !status.fan ? _('Collecting data...') : fault(fan.error),
+				stat(_('温度'), reading(fan.temperature, function(v) { return '%.1f °C'.format(v / 1000); }), '#e0741a'),
+				stat(_('风扇转速'), reading(fan.rpm, function(v) { return '%d RPM'.format(v); }), '#2e9e5b'),
+				stat(_('PWM 输出'), reading(fan.pwm, function(v) { return '%d / 255 (%d%%)'.format(v, Math.round(v * 100 / 255)); }), '#4a90d9'),
+				stat(_('最热传感器'), fan.sensor || '-', '#8e6fd0'),
+				stat(_('有效传感器'), reading(fan.sensors, String), '#c05a9e'),
+				stat(_('故障'), running && !status.fan ? _('正在收集数据…') : fault(fan.error),
 					fan.error ? '#d04040' : '#2e9e5b')
 			]));
-			dom.content(this.ledStatus, running ? (!status.led ? _('Collecting data...') :
-				(led.error ? fault(led.error) : '🟢 ' + _('Running'))) : '🔴 ' + _('Stopped'));
+			dom.content(this.ledStatus, running ? (!status.led ? _('正在收集数据…') :
+				(led.error ? fault(led.error) : '🟢 ' + _('运行中'))) : '🔴 ' + _('已停止'));
 		}, this));
 	},
 
 	render: function(data) {
-		const m = new form.Map('xiaomi-control', _('Fan & RGB Control'),
-			_('BE10000 fan speed and RGB lighting control panel — driven by the upstream hardware controller.'));
+		const m = new form.Map('xiaomi-control', _('风扇与灯效'),
+			_('小米 BE10000 风扇转速与 RGB 灯效控制面板，由上游硬件控制器驱动。'));
 		const s = m.section(form.NamedSection, 'settings', 'control');
 		s.addremove = false;
-		this.fanStatus = E('div', {}, _('Collecting data...'));
-		this.fanStats = E('div', {}, _('Collecting data...'));
+		this.fanStatus = E('div', {}, _('正在收集数据…'));
+		this.fanStats = E('div', {}, _('正在收集数据…'));
 		this.fanBadge = E('span', {}, '...');
-		this.ledStatus = E('span', {}, _('Collecting data...'));
-		this.nfcStatus = m.nfcStatus = E('span', {}, _('Collecting data...'));
+		this.ledStatus = E('span', {}, _('正在收集数据…'));
+		this.nfcStatus = m.nfcStatus = E('span', {}, _('正在收集数据…'));
 		/* 不再硬编码板名：原先 xiaomi,be10000 的正则在板名变体/取值失败时
 		   会让整个风扇+灯效控件区不渲染，表现为"菜单有、页面空"。
 		   前端一律渲染，硬件是否可用由上游后端 xiaomi-control.uc 自行判断。 */
 		if (true) {
 
 			/* ---------- 风扇卡片 ---------- */
-			s.tab('fan', _('🌀 Fan'));
-			let o = s.taboption('fan', form.DummyValue, '_fan_badge', _('Controller status'));
+			s.tab('fan', _('🌀 风扇'));
+			let o = s.taboption('fan', form.DummyValue, '_fan_badge', _('控制器状态'));
 			o.renderWidget = L.bind(function() { return this.fanBadge; }, this);
-			o = s.taboption('fan', form.DummyValue, '_fan_live', _('Live telemetry'));
+			o = s.taboption('fan', form.DummyValue, '_fan_live', _('实时数据'));
 			o.renderWidget = L.bind(function() { return this.fanStats; }, this);
-			o = s.taboption('fan', form.ListValue, 'profile', _('Fan profile'),
-				_('Uses the highest valid thermal-zone temperature, with hysteresis, a startup boost and full-speed recovery on faults.'));
-			o.value('auto', _('Automatic (45–85 °C)'));
-			o.value('quiet', _('Quiet (52–80 °C)'));
-			o.value('balanced', _('Balanced (45–75 °C)'));
-			o.value('performance', _('Performance (38–65 °C)'));
+			o = s.taboption('fan', form.ListValue, 'profile', _('风扇模式'),
+				_('取所有有效温控区的最高温度，带迟滞、启动增压；异常时自动恢复全速。'));
+			o.value('auto', _('自动（45–85 °C）'));
+			o.value('quiet', _('静音（52–80 °C）'));
+			o.value('balanced', _('均衡（45–75 °C）'));
+			o.value('performance', _('性能（38–65 °C）'));
 			o.default = 'auto';
 			o.rmempty = false;
 
 			/* ---------- 灯效卡片 ---------- */
-			s.tab('led', _('💡 RGB Lighting'));
-			o = s.taboption('led', form.DummyValue, '_led_status', _('Controller status'));
+			s.tab('led', _('💡 RGB 灯效'));
+			o = s.taboption('led', form.DummyValue, '_led_status', _('控制器状态'));
 			o.renderWidget = L.bind(function() { return E('span', { 'style': 'font-weight:600' }, this.ledStatus); }, this);
-			o = s.taboption('led', form.Flag, 'enabled', _('Enable RGB lighting'));
+			o = s.taboption('led', form.Flag, 'enabled', _('启用 RGB 灯效'));
 			o.default = o.enabled;
 			o.rmempty = false;
-			o = s.taboption('led', form.ListValue, 'mode', _('Lighting mode'));
+			o = s.taboption('led', form.ListValue, 'mode', _('灯效模式'));
 			[
-				[ 'static', _('Static') ], [ 'breathe', _('Breathing') ],
-				[ 'duotone', _('Two-color fade') ], [ 'rainbow', _('Rainbow') ],
-				[ 'temperature', _('Temperature') ], [ 'cpu', _('CPU load') ], [ 'traffic', _('Network traffic') ]
+				[ 'static', _('静态') ], [ 'breathe', _('呼吸') ],
+				[ 'duotone', _('双色渐变') ], [ 'rainbow', _('彩虹') ],
+				[ 'temperature', _('温度') ], [ 'cpu', _('CPU 负载') ], [ 'traffic', _('网络流量') ]
 			].forEach(function(entry) { o.value(entry[0], entry[1]); });
 			o.default = 'breathe';
 			o.rmempty = false;
@@ -272,41 +272,41 @@ return view.extend({
 				option.depends(dependency);
 			}
 
-			o = s.taboption('led', ColorValue, 'color', _('Primary color'));
+			o = s.taboption('led', ColorValue, 'color', _('主色'));
 			o.default = '#0000ff';
 			o.rmempty = false;
 			o.validate = validateColor;
 			modes(o, [ 'static', 'breathe', 'duotone' ]);
-			o = s.taboption('led', ColorValue, 'second_color', _('Secondary color'));
+			o = s.taboption('led', ColorValue, 'second_color', _('副色'));
 			o.default = '#ff00aa';
 			o.rmempty = false;
 			o.validate = validateColor;
 			modes(o, [ 'duotone' ]);
-			slider('brightness', _('Maximum brightness'), '96', 0, 255);
-			slider('minimum_brightness', _('Minimum brightness'), '8', 0, 255, [ 'breathe' ]);
-			slider('speed', _('Animation speed'), '5', 1, 10, [ 'breathe', 'duotone', 'rainbow' ]);
-			slider('sensitivity', _('Sensitivity'), '5', 1, 10, [ 'temperature', 'cpu', 'traffic' ]);
-			o = s.taboption('led', form.Value, 'traffic_interface', _('Traffic interface'),
-				_('Logical interface or network device, for example wan or pppoe-wan.'));
+			slider('brightness', _('最高亮度'), '96', 0, 255);
+			slider('minimum_brightness', _('最低亮度'), '8', 0, 255, [ 'breathe' ]);
+			slider('speed', _('动画速度'), '5', 1, 10, [ 'breathe', 'duotone', 'rainbow' ]);
+			slider('sensitivity', _('状态灵敏度'), '5', 1, 10, [ 'temperature', 'cpu', 'traffic' ]);
+			o = s.taboption('led', form.Value, 'traffic_interface', _('流量接口'),
+				_('网络逻辑接口或设备名，例如 wan 或 pppoe-wan。'));
 			o.default = 'wan';
 			o.rmempty = false;
 			o.validate = function(section_id, value) {
-				return /^[A-Za-z0-9_+.:@-]{1,15}$/.test(value || '') || _('Enter a valid interface or device name (up to 15 characters).');
+				return /^[A-Za-z0-9_+.:@-]{1,15}$/.test(value || '') || _('请输入有效的接口或设备名，最多 15 个字符。');
 			};
 			modes(o, [ 'traffic' ]);
 
-			o = s.taboption('led', form.Flag, 'schedule_enabled', _('Scheduled lighting'),
-				_('Equal start and end times cover the whole day. Time ranges may cross midnight.'));
+			o = s.taboption('led', form.Flag, 'schedule_enabled', _('定时灯效'),
+				_('起止时间相同表示全天开启；时段可跨零点。'));
 			o.rmempty = false;
 			o.depends('enabled', '1');
-			timeOption('on_time', _('On time'), '07:00', 'schedule_enabled');
-			timeOption('off_time', _('Off time'), '23:30', 'schedule_enabled');
-			o = s.taboption('led', form.Flag, 'night_enabled', _('Night brightness'));
+			timeOption('on_time', _('开启时间'), '07:00', 'schedule_enabled');
+			timeOption('off_time', _('关闭时间'), '23:30', 'schedule_enabled');
+			o = s.taboption('led', form.Flag, 'night_enabled', _('夜间亮度'));
 			o.rmempty = false;
 			o.depends('enabled', '1');
-			timeOption('night_start', _('Night start'), '22:00', 'night_enabled');
-			timeOption('night_end', _('Night end'), '07:00', 'night_enabled');
-			o = slider('night_brightness', _('Maximum night brightness'), '24', 0, 255, []);
+			timeOption('night_start', _('夜间开始'), '22:00', 'night_enabled');
+			timeOption('night_end', _('夜间结束'), '07:00', 'night_enabled');
+			o = slider('night_brightness', _('夜间最高亮度'), '24', 0, 255, []);
 			o.depends({ enabled: '1', night_enabled: '1' });
 		}
 		nfcOptions(s);
