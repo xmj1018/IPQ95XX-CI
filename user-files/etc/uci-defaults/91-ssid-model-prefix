@@ -1,7 +1,7 @@
 #!/bin/sh
-# SSID 前缀 = 机型名（BE10000），交给上游 router-tool 自动生成
-#   BE10000-2.4G / BE10000-5.2G / BE10000-5.8G（三频）
-#   左上角/登录页品牌 = BE10000（由 WRT_NAME 设 hostname），后台 192.168.100.1。
+# SSID 前缀 = 机型名（SBE1V1K），交给上游 router-tool 自动生成
+#   SBE1V1K-2.4G / SBE1V1K-5.2G / SBE1V1K-6G（三频；第三频段是 6G，不是 5.8G）
+#   后缀由上游 wireless.uc 按 band 自动生成：2G->2.4G、5G->5.2G/5.8G、6G->6G。
 #
 # 原理：上游 luci-app-router-tool 的 wireless.uc 会读
 #   /etc/config/router-tool 里 config wireless 'defaults' 的 ssid/key，
@@ -21,7 +21,7 @@ if ! uci -q get router-tool.defaults.ssid >/dev/null 2>&1; then
 	fi
 fi
 
-uci set router-tool.defaults.ssid='BE10000'
+uci set router-tool.defaults.ssid='SBE1V1K'
 uci set router-tool.defaults.key='12345678'
 uci commit router-tool 2>/dev/null || true
 
