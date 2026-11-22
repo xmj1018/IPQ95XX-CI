@@ -127,8 +127,10 @@ return view.extend({
 	_running: false,
 
 	load: function() {
+		/* uci.load 用 resolveDefault 兜底：配置缺失/损坏时不让整页渲染中断。
+		   render() 里 uci.get_all 已有 || {} 保护，仍可显示完整面板。 */
 		return Promise.all([
-			uci.load('xiaomi-control'),
+			L.resolveDefault(uci.load('xiaomi-control'), null),
 			L.resolveDefault(fs.read('/var/run/xiaomi-control.json'), ''),
 			L.resolveDefault(callServiceList('xiaomi-control'), {})
 		]);
