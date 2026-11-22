@@ -1,0 +1,7 @@
+PKG=luci-app-be10000-fanrgb
+VER=1.0.0-r1
+ARCH=noarch
+DESC=BE10000 Fan and RGB control SBE1V1K style UI
+URL=https://github.com/VIKINGYFY/immortalwrt
+LIC=GPL-2.0-or-later
+DEPENDS=luci-base rpcd-mod-file ucode ucode-mod-ubus
