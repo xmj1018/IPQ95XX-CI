@@ -13,7 +13,8 @@ const PROFILES = {
 	auto: [45, 85, 3, 51],
 	quiet: [52, 80, 4, 51],
 	balanced: [45, 75, 3, 51],
-	performance: [38, 65, 2, 64]
+	performance: [38, 65, 2, 64],
+	custom: [45, 85, 3, 51]
 };
 const MODES = [ 'static', 'breathe', 'duotone', 'rainbow', 'temperature', 'cpu', 'traffic' ];
 const CHANNELS = [ 'red', 'green', 'blue' ];
@@ -34,6 +35,47 @@ let led = {};
 
 function clamp(value, low, high) {
 	return min(high, max(low, int(value)));
+}
+
+function parse_curve(value) {
+	let pts = [];
+	if (type(value) != 'string')
+		return pts;
+	for (let seg in split(value, ',')) {
+		let kv = split(trim(seg), ':');
+		if (length(kv) != 2 || !match(kv[0], /^[0-9]+$/) || !match(kv[1], /^[0-9]+$/))
+			continue;
+		let t = int(kv[0]), p = int(kv[1]);
+		pts.push([ clamp(t, 30, 95), clamp(p, 0, 100) ]);
+	}
+	for (let i = 0; i < length(pts); i++)
+		for (let j = i + 1; j < length(pts); j++)
+			if (pts[j][0] < pts[i][0]) {
+				let tmp = pts[i]; pts[i] = pts[j]; pts[j] = tmp;
+			}
+	return pts;
+}
+
+let curve_pts = parse_curve(cfg.curve);
+
+function curve_pct(t) {
+	let pts = curve_pts;
+	if (length(pts) == 0)
+		return 50;
+	if (t <= pts[0][0])
+		return pts[0][1];
+	let prev_t = pts[0][0], prev_p = pts[0][1];
+	for (let i = 1; i < length(pts); i++) {
+		let st = pts[i][0], sp = pts[i][1];
+		if (t <= st) {
+			let dt = st - prev_t, dp = sp - prev_p;
+			if (dt <= 0)
+				return sp;
+			return clamp(prev_p + (t - prev_t) * dp / dt, 0, 100);
+		}
+		prev_t = st; prev_p = sp;
+	}
+	return prev_p;
 }
 
 function number_option(name, fallback, low, high) {
@@ -95,6 +137,10 @@ function set_pwm(value) {
 }
 
 function fan_target(temperature, active) {
+	if (profile_name == 'custom') {
+		let pct = curve_pct(temperature / 1000);
+		return clamp(pct * 255 / 100, 0, 255);
+	}
 	if (temperature < profile[0] * 1000 &&
 	    (!active || temperature <= (profile[0] - profile[2]) * 1000))
 		return 0;
@@ -139,9 +185,11 @@ function update_fan() {
 	}
 	if (error)
 		delay = 1000;
+	let pwm_now = fan_path ? read_number(fan_path + '/pwm1') : null;
 	fan = { available: fan_path != null, profile: profile_name,
 		temperature: sample.temperature, sensor: sample.sensor, sensors: sample.count,
-		pwm: fan_path ? read_number(fan_path + '/pwm1') : null, rpm, error };
+		pwm: pwm_now, pct: pwm_now != null ? clamp(pwm_now * 100 / 255, 0, 100) : null,
+		curve: cfg.curve, rpm, error };
 	fan_timer.set(delay);
 }
 
