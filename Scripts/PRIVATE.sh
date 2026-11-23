@@ -7,7 +7,6 @@
 #   2) 把 user-files 覆盖进 ./files 并补回被 REST API 上传丢掉的可执行位。
 #
 # 【包源归属】官方 Packages.sh 已提供：OpenClash(vernesong)、Argon(sbwml 新版)。
-#            本固件【不】加 HomeProxy，GENERAL 基线里写死的 homeproxy 由 PRIVATE.txt =n 关掉。
 #            其余三个（honk / OAF / iStoreOS 风格）必须在此克隆，否则 defconfig 会
 #            因找不到包符号直接丢弃 PRIVATE.txt 里的 =y，插件静默消失。
 
