@@ -34,7 +34,6 @@ for PKG in quickstart luci-app-quickstart luci-app-istorex luci-app-store taskd 
   UPDATE_PACKAGE "$PKG" "kenzok8/openwrt-packages" "master" "pkg"
 done
 
-# ---------------- 自定义文件覆盖（最新版 Argon 模板 + 315 字体 + 自研功能成品）----------------
 if [ -d "$GITHUB_WORKSPACE/user-files" ]; then
   mkdir -p ./files
   cp -af "$GITHUB_WORKSPACE/user-files/." ./files/
