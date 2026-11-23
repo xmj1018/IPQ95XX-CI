@@ -26,7 +26,7 @@ if [ -d "$GITHUB_WORKSPACE/user-files" ]; then
     ./files/usr/libexec/rpcd/luci.argon_update \
     ./files/usr/libexec/rpcd/luci.argon_wallpaper 2>/dev/null || :
   chmod 644 ./files/usr/lib/lua/luci/controller/route_tool.lua 2>/dev/null || :
-  echo "Mi-10G-Wrt user-files overlaid: $(find ./files -type f | wc -l) files"
+  echo "MiBE10000 user-files overlaid: $(find ./files -type f | wc -l) files"
 else
   echo "WARN: user-files not found, skip overlay"
 fi
