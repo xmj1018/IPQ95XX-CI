@@ -6,41 +6,6 @@
 'require ui';
 'require poll';
 
-/*
- * BE10000 RGB 状态灯 —— SBE1V1K 同款精致风格（独立模块）
- * 后端：复用 OWRT 上游 luci-app-xiaomi-control 的 xiaomi-control.uc
- *       - 配置读写 uci xiaomi-control.settings（灯相关字段）
- *       - 运行状态读 /var/run/xiaomi-control.json 的 led 段
- */
-
-ui.addNotification = function(title, children, ...classes) {
-	var danger = classes.indexOf('danger') >= 0;
-	var color = danger ? '#e64545' : '#3a9d5d';
-	var content = [];
-	if (title != null) content.push(E('h4', { 'style': 'margin:0 0 4px;font-size:14px' }, title));
-	if (children != null) content.push(children);
-	var box = E('div', {
-		'class': 'alert-message',
-		'style': 'display:flex;align-items:center;gap:12px;padding:10px 14px;margin-bottom:10px;' +
-			'background:' + color + ';color:#fff;border-radius:4px;box-shadow:0 2px 8px rgba(0,0,0,.2)'
-	}, [
-		E('div', { 'style': 'flex:1 1 auto' }, content),
-		E('button', {
-			'class': 'btn',
-			'style': 'margin-left:auto;background:transparent;color:#fff;border:1px solid rgba(255,255,255,.5)',
-			'click': function(ev) {
-				var n = ev.target;
-				while (n && !(n.classList && n.classList.contains('alert-message'))) n = n.parentNode;
-				if (n && n.parentNode) n.parentNode.removeChild(n);
-			}
-		}, [ '关闭' ])
-	]);
-	var mc = document.querySelector('#maincontent') || document.body;
-	mc.insertBefore(box, mc.firstElementChild);
-	setTimeout(function() { if (box.parentNode) box.parentNode.removeChild(box); }, 2600);
-	return box;
-};
-
 const callServiceList = rpc.declare({ object: 'service', method: 'list', params: [ 'name' ], expect: { '': {} } });
 const callServiceRestart = rpc.declare({ object: 'service', method: 'restart', params: [ 'name' ] });
 
@@ -85,17 +50,43 @@ var CSS = [
 	'.hw-toggle.on{background:var(--primary,#5e72e4)}',
 	'.hw-toggle:after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#fff;transition:left .2s;box-shadow:0 1px 3px rgba(0,0,0,.25)}',
 	'.hw-toggle.on:after{left:23px}',
-	'.hw-note{padding:11px 14px;border-radius:11px;background:rgba(94,114,228,.09);border:1px solid rgba(94,114,228,.25);font-size:12.5px;line-height:1.65;margin-top:12px}',
-	'.hw-lampbox{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:190px}',
-	'.hw-lamp{width:112px;height:112px;border-radius:50%;position:relative;transition:background .25s,box-shadow .25s;border:1px solid rgba(255,255,255,.25)}',
-	'.hw-lamp:after{content:"";position:absolute;inset:-18px;border-radius:50%;background:inherit;filter:blur(24px);opacity:.5;z-index:-1}',
-	'.hw-lamp.off{opacity:.25;box-shadow:none !important}',
-	'.hw-hex{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:13px;margin-top:16px;letter-spacing:.5px}'
+	'.hw-note{padding:11px 14px;border-radius:11px;background:rgba(94,114,228,.09);border:1px solid rgba(94,114,228,.25);font-size:12.5px;line-height:1.65;margin-top:12px}'
 ].join('');
 
 function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function(c) {
 	return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
 function modeLabel(m) { for (var i = 0; i < MODES.length; i++) if (MODES[i][0] === m) return MODES[i][1]; return m || '—'; }
+
+function notify(title, children, danger) {
+	var color = danger ? '#e64545' : '#3a9d5d';
+	var content = [];
+	if (title != null) content.push(E('h4', { 'style': 'margin:0 0 4px;font-size:14px' }, title));
+	if (children != null) content.push(children);
+	var box = E('div', {
+		'class': 'alert-message hw-toast',
+		'style': 'display:flex;align-items:center;gap:12px;padding:10px 14px;margin-bottom:10px;' +
+			'background:' + color + ';color:#fff;border-radius:4px;box-shadow:0 2px 8px rgba(0,0,0,.2)'
+	}, [
+		E('div', { 'style': 'flex:1 1 auto' }, content),
+		E('button', {
+			'class': 'btn',
+			'style': 'margin-left:auto;background:transparent;color:#fff;border:1px solid rgba(255,255,255,.5)',
+			'click': function() { if (box.parentNode) box.parentNode.removeChild(box); }
+		}, [ '关闭' ])
+	]);
+	var mc = document.querySelector('#maincontent') || document.body;
+	mc.insertBefore(box, mc.firstElementChild);
+	var closed = false;
+	function close() { if (closed) return; closed = true; if (box.parentNode) box.parentNode.removeChild(box); }
+	setTimeout(close, 3000);
+	document.addEventListener('click', function once(ev) {
+		if (closed) { document.removeEventListener('click', once); return; }
+		if (ev.target === box || box.contains(ev.target)) return;
+		close();
+		document.removeEventListener('click', once);
+	}, true);
+	return box;
+}
 
 return view.extend({
 	_running: false,
@@ -109,6 +100,7 @@ return view.extend({
 	},
 
 	refresh: function() {
+		if (!document.getElementById('hw-led-live')) return Promise.resolve();
 		var self = this;
 		return Promise.all([
 			L.resolveDefault(fs.read('/var/run/xiaomi-control.json'), ''),
@@ -131,23 +123,6 @@ return view.extend({
 		this.setText('hw-led-live', led.error ? esc(led.error) : modeLabel(led.mode));
 		var lv = document.getElementById('hw-led-live'); if (lv) lv.style.color = led.error ? '#f5365c' : 'inherit';
 		this.setText('hw-led-br', (led.brightness != null) ? led.brightness : '—');
-		this.updateLamp(led);
-	},
-
-	updateLamp: function(led) {
-		var lamp = document.getElementById('hw-lamp');
-		if (!lamp) return;
-		var br = (typeof led.brightness === 'number') ? led.brightness : 0;
-		var on = br > 0 && !led.error;
-		var rgb = /^#[0-9a-fA-F]{6}$/.test(this._color || '') ? this._color : '#0000ff';
-		var r = parseInt(rgb.substr(1, 2), 16), g = parseInt(rgb.substr(3, 2), 16), b = parseInt(rgb.substr(5, 2), 16);
-		var k = Math.min(1, Math.max(0, br / 255));
-		var sc = function(v) { return ('0' + Math.round(v * k).toString(16)).slice(-2); };
-		var shown = '#' + sc(r) + sc(g) + sc(b);
-		lamp.style.background = shown;
-		lamp.style.boxShadow = on ? '0 0 34px 8px ' + rgb + ', inset 0 0 22px rgba(255,255,255,.35)' : 'none';
-		if (on) lamp.classList.remove('off'); else lamp.classList.add('off');
-		this.setText('hw-lamp-hex', shown);
 	},
 
 	applyCfg: function() {
@@ -170,13 +145,11 @@ return view.extend({
 		set('night_end', document.getElementById('in-night-off')?.value || '07:00');
 		set('night_brightness', document.getElementById('in-nightbright')?.value);
 		uci.save('xiaomi-control');
-		/* 不用 uci.apply：该 config 未在 ucitrack 注册，apply 会返回 ubus code 5 弹红条。
-		   真正让新参数生效的是重启后端进程（它启动时会一次性读配置）。 */
 		return L.resolveDefault(callServiceRestart('xiaomi-control'), null).then(function() {
-			ui.addNotification('已应用', '灯效参数已保存并重载，稍后自动生效。');
+			notify('已应用', '灯效参数已保存并重载，稍后自动生效。');
 			setTimeout(function() { self.refresh(); }, 1200);
 		}).catch(function(e) {
-			ui.addNotification('保存失败', String(e && e.message || e), 'danger');
+			notify('保存失败', String(e && e.message || e), true);
 		});
 	},
 
@@ -230,18 +203,11 @@ return view.extend({
 				]),
 				E('span', { 'class': 'hw-pill', 'id': 'hw-run-pill' }, '● 读取中')
 			]),
-			E('div', { 'class': 'hw-2col' }, [
-				E('div', { 'class': 'hw-card hw-lampbox' }, [
-					E('div', { 'class': 'hw-lamp off', 'id': 'hw-lamp', 'style': 'background:#0000ff' }),
-					E('div', { 'class': 'hw-hex', 'id': 'hw-lamp-hex' }, '#000000'),
-					E('div', { 'class': 'hw-foot' }, '实时预览（按当前亮度缩放）')
-				]),
-				E('div', { 'class': 'hw-card' }, [
-					E('h3', {}, '灯效运行状态'),
-					E('div', { 'style': 'margin-top:4px' }, [
-						kv('当前灯效', 'hw-led-live', '—'),
-						kv('当前亮度 (0–255)', 'hw-led-br', '—')
-					])
+			E('div', { 'class': 'hw-card wide' }, [
+				E('h3', {}, '灯效运行状态'),
+				E('div', { 'style': 'margin-top:4px' }, [
+					kv('当前灯效', 'hw-led-live', '—'),
+					kv('当前亮度', 'hw-led-br', '—')
 				])
 			]),
 			E('div', { 'class': 'hw-2col' }, [
