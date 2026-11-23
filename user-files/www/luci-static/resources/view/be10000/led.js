@@ -37,6 +37,10 @@ var CSS = [
 	'.hw-btn:hover{border-color:var(--primary,#5e72e4);transform:translateY(-1px)}',
 	'.hw-btn.primary{background:var(--primary,#5e72e4);border-color:var(--primary,#5e72e4);color:#fff}',
 	'.hw-select{padding:8px 10px;border-radius:9px;border:1px solid rgba(127,127,127,.25);background:rgba(127,127,127,.06);color:inherit;font-size:13px}',
+	'.hw-seg{display:flex;gap:7px;flex-wrap:wrap;margin:4px 0 10px}',
+	'.hw-seg button{flex:1;min-width:70px;padding:9px 8px;border-radius:10px;border:1px solid rgba(127,127,127,.22);background:rgba(127,127,127,.05);color:inherit;font-size:12.5px;font-weight:600;cursor:pointer;transition:all .18s}',
+	'.hw-seg button:hover{border-color:var(--primary,#5e72e4)}',
+	'.hw-seg button.on{background:var(--primary,#5e72e4);border-color:var(--primary,#5e72e4);color:#fff;box-shadow:0 3px 10px rgba(94,114,228,.28)}',
 	'.hw-kv{display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid rgba(127,127,127,.12);font-size:12.5px}',
 	'.hw-kv:last-child{border-bottom:0}',
 	'.hw-kv span:first-child{opacity:.65}',
@@ -57,7 +61,9 @@ function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function
 	return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
 function modeLabel(m) { for (var i = 0; i < MODES.length; i++) if (MODES[i][0] === m) return MODES[i][1]; return m || '—'; }
 
+var _hwToast = null;
 function notify(title, children, danger) {
+	if (_hwToast) { try { _hwToast._close(true); } catch (e) {} _hwToast = null; }
 	var color = danger ? '#e64545' : '#3a9d5d';
 	var content = [];
 	if (title != null) content.push(E('h4', { 'style': 'margin:0 0 4px;font-size:14px' }, title));
@@ -65,26 +71,43 @@ function notify(title, children, danger) {
 	var box = E('div', {
 		'class': 'alert-message hw-toast',
 		'style': 'display:flex;align-items:center;gap:12px;padding:10px 14px;margin-bottom:10px;' +
-			'background:' + color + ';color:#fff;border-radius:4px;box-shadow:0 2px 8px rgba(0,0,0,.2)'
+			'background:' + color + ';color:#fff;border-radius:4px;box-shadow:0 2px 8px rgba(0,0,0,.2);' +
+			'opacity:0;transform:translateY(-6px);transition:opacity .18s ease,transform .18s ease'
 	}, [
 		E('div', { 'style': 'flex:1 1 auto' }, content),
 		E('button', {
 			'class': 'btn',
 			'style': 'margin-left:auto;background:transparent;color:#fff;border:1px solid rgba(255,255,255,.5)',
-			'click': function() { if (box.parentNode) box.parentNode.removeChild(box); }
+			'click': function() { close(); }
 		}, [ '关闭' ])
 	]);
 	var mc = document.querySelector('#maincontent') || document.body;
 	mc.insertBefore(box, mc.firstElementChild);
-	var closed = false;
-	function close() { if (closed) return; closed = true; if (box.parentNode) box.parentNode.removeChild(box); }
-	setTimeout(close, 3000);
-	document.addEventListener('click', function once(ev) {
-		if (closed) { document.removeEventListener('click', once); return; }
+	if (window.requestAnimationFrame)
+		requestAnimationFrame(function() { box.style.opacity = '1'; box.style.transform = 'translateY(0)'; });
+	else { box.style.opacity = '1'; box.style.transform = 'translateY(0)'; }
+	var closed = false, timer = null;
+	function close(immediate) {
+		if (closed) return;
+		closed = true;
+		if (timer != null) clearTimeout(timer);
+		document.removeEventListener('click', once, true);
+		if (_hwToast === box) _hwToast = null;
+		function done() { if (box.parentNode) box.parentNode.removeChild(box); }
+		if (immediate || !box.parentNode || !window.requestAnimationFrame) { done(); return; }
+		box.style.opacity = '0';
+		box.style.transform = 'translateY(-6px)';
+		setTimeout(done, 200);
+	}
+	function once(ev) {
+		if (closed || !box.parentNode) { close(true); return; }
 		if (ev.target === box || box.contains(ev.target)) return;
 		close();
-		document.removeEventListener('click', once);
-	}, true);
+	}
+	timer = setTimeout(function() { close(); }, 3000);
+	document.addEventListener('click', once, true);
+	box._close = close;
+	_hwToast = box;
 	return box;
 }
 
@@ -144,8 +167,9 @@ return view.extend({
 		set('night_start', document.getElementById('in-night-on')?.value || '22:00');
 		set('night_end', document.getElementById('in-night-off')?.value || '07:00');
 		set('night_brightness', document.getElementById('in-nightbright')?.value);
-		uci.save('xiaomi-control');
-		return L.resolveDefault(callServiceRestart('xiaomi-control'), null).then(function() {
+		return uci.save().then(function() {
+			return L.resolveDefault(callServiceRestart('xiaomi-control'), null);
+		}).then(function() {
 			notify('已应用', '灯效参数已保存并重载，稍后自动生效。');
 			setTimeout(function() { self.refresh(); }, 1200);
 		}).catch(function(e) {
@@ -174,6 +198,7 @@ return view.extend({
 		if (_sec) Object.keys(_sec).forEach(function(k) { if (k[0] !== '.') c[k] = uci.get('xiaomi-control', 'settings', k); });
 		this._color = /^#[0-9a-fA-F]{6}$/.test(c.color || '') ? c.color : '#0000ff';
 		this._color2 = /^#[0-9a-fA-F]{6}$/.test(c.second_color || '') ? c.second_color : '#ff00aa';
+		var curMode = c.mode || 'breathe';
 
 		var bind = function(el) {
 			for (var i = 1; i + 1 < arguments.length; i += 2) el.addEventListener(arguments[i], arguments[i + 1]);
@@ -217,12 +242,17 @@ return view.extend({
 						E('label', {}, '启用灯效'),
 						E('div', { 'id': 'tg-led', 'class': 'hw-toggle' + ((c.enabled !== '0') ? ' on' : ''), 'click': self._toggle })
 					]),
-					E('div', { 'class': 'hw-row' }, [
-						E('label', {}, '灯效模式'),
-						E('select', { 'id': 'in-mode', 'class': 'hw-select' }, MODES.map(function(m) {
-							return E('option', { 'value': m[0], 'selected': (c.mode || 'breathe') === m[0] }, m[1]);
-						}))
-					]),
+					E('div', { 'class': 'hw-label' }, '灯效模式'),
+					E('div', { 'class': 'hw-seg' }, MODES.map(function(m) {
+						return E('button', { 'class': (curMode === m[0] ? 'on' : ''), 'click': function() {
+							[].forEach.call(this.parentNode.children, function(x) { x.classList.remove('on'); });
+							this.classList.add('on');
+							var sel = document.getElementById('in-mode'); if (sel) sel.value = m[0];
+						} }, m[1]);
+					})),
+					E('select', { 'id': 'in-mode', 'style': 'display:none' }, MODES.map(function(m) {
+						return E('option', { 'value': m[0], 'selected': curMode === m[0] }, m[1]);
+					})),
 					E('div', { 'class': 'hw-row' }, [
 						E('label', {}, '主色'),
 						E('div', { 'id': 'prev-color', 'style': 'width:26px;height:26px;border-radius:7px;background:' + this._color + ';border:1px solid rgba(127,127,127,.3)' }),
