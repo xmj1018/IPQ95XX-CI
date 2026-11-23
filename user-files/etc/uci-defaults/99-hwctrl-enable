@@ -1,8 +1,0 @@
-#!/bin/sh
-# 开机启用 SBE1V1K 风扇与 RGB 状态灯守护（init 自带 board_name 硬件守卫）
-for s in fanctl ledctl; do
-    [ -x "/etc/init.d/$s" ] && "/etc/init.d/$s" enable >/dev/null 2>&1
-done
-rm -f /tmp/luci-indexcache* /tmp/luci-modulecache/* 2>/dev/null || :
-[ -x /etc/init.d/rpcd ] && /etc/init.d/rpcd restart >/dev/null 2>&1 || :
-exit 0
