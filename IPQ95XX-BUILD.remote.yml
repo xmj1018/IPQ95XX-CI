@@ -15,7 +15,7 @@ jobs:
       WRT_CONFIG: IPQ95XX
       WRT_THEME: argon
       # hostname = 左上角与登录页的品牌字（新版 Argon 模板直接取 hostname 渲染）
-      WRT_NAME: sbe1v1k
+      WRT_NAME: SBE1V1K
       # OWRT 是上游 router-tool 用来识别默认 AP 的字面量，改动会导致无线不初始化
       WRT_SSID: OWRT
       WRT_WORD: 12345678
