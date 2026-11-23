@@ -1,0 +1,17 @@
+{
+	"be10000-led": {
+		"description": "BE10000 RGB 状态灯（SBE 风格界面，复用 xiaomi-control 上游后端）",
+		"read": {
+			"uci": [ "xiaomi-control" ],
+			"ubus": { "service": [ "list" ], "system": [ "board" ], "file": [ "read" ] },
+			"file": {
+				"/var/run/xiaomi-control.json": [ "read" ],
+				"/tmp/run/xiaomi-control.json": [ "read" ]
+			}
+		},
+		"write": {
+			"uci": [ "xiaomi-control" ],
+			"ubus": { "service": [ "restart" ] }
+		}
+	}
+}
