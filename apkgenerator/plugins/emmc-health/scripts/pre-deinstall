@@ -1,7 +1,0 @@
-#!/bin/sh
-# luci-app-emmc-health APK pre-deinstall：卸载时清理，不动系统服务
-[ -n "$IPKG_INSTROOT" ] && exit 0
-if [ -x /etc/init.d/rpcd ]; then
-	/etc/init.d/rpcd reload >/dev/null 2>&1 || true
-fi
-exit 0
