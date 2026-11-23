@@ -1,5 +1,12 @@
 {
-	"admin/system/fan": {
+	"admin/control": {
+		"title": "管控",
+		"order": 44,
+		"action": {
+			"type": "firstchild"
+		}
+	},
+	"admin/control/fan": {
 		"title": "风扇控制",
 		"order": 95,
 		"action": {
