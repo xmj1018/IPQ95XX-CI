@@ -1,9 +1,13 @@
 #!/bin/sh
-# 三频 SSID 前缀：SBE1V1K-2.4G / -5.2G / -6G
-# 上游 router-tool 用 defaults.ssid + 频段后缀生成 AP 名；
-# OWRT 是它识别"未改过默认 AP"的判断字面量，保持不动，只填自定义入口。
-for i in 1 2 3 4 5; do uci -q get router-tool.defaults >/dev/null 2>&1 && break; uci add router-tool defaults >/dev/null 2>&1; uci rename router-tool.@defaults[-1]=defaults >/dev/null 2>&1; done
-uci set router-tool.defaults.ssid='SBE1V1K'
+if ! uci -q get router-tool.defaults.ssid >/dev/null 2>&1; then
+	if ! uci -q get router-tool.defaults >/dev/null 2>&1; then
+		uci add router-tool defaults >/dev/null 2>&1
+		uci rename router-tool.@defaults[-1]=defaults >/dev/null 2>&1
+	fi
+fi
+
+uci set router-tool.defaults.ssid='Mi-10G-Wrt'
 uci set router-tool.defaults.key='12345678'
-uci commit router-tool 2>/dev/null || :
+uci commit router-tool 2>/dev/null || true
+
 exit 0
