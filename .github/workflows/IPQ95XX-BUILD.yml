@@ -12,7 +12,7 @@ jobs:
     with:
       WRT_CONFIG: IPQ95XX
       WRT_THEME: argon
-      WRT_NAME: Mi-10G-Wrt
+      WRT_NAME: MiBE10000
       WRT_SSID: OWRT
       WRT_WORD: 12345678
       WRT_IP: 192.168.100.1
