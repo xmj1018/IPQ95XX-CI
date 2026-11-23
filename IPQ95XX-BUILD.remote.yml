@@ -1,0 +1,29 @@
+# SBE1V1K 新固件编译入口（2026-11-23 从零编写，不继承任何旧配置）
+# Argon 主题模板/CSS/Argon Config 保持最新版不动（user-files 覆盖）；字体用 315 固件提取那套（旧 LibWrt 字体已移除）
+
+name: IPQ95XX-BUILD
+
+on:
+  workflow_dispatch:
+
+permissions: write-all
+
+jobs:
+  config:
+    name: IPQ95XX
+    uses: ./.github/workflows/WRT-CORE.yml
+    with:
+      WRT_CONFIG: IPQ95XX
+      WRT_THEME: argon
+      # hostname = 左上角与登录页的品牌字（新版 Argon 模板直接取 hostname 渲染）
+      WRT_NAME: sbe1v1k
+      # OWRT 是上游 router-tool 用来识别默认 AP 的字面量，改动会导致无线不初始化
+      WRT_SSID: OWRT
+      WRT_WORD: 12345678
+      WRT_IP: 192.168.99.1
+      WRT_PW: 无
+      WRT_REPO: https://github.com/VIKINGYFY/immortalwrt.git
+      WRT_BRANCH: owrt
+      WRT_SOURCE: VIKINGYFY/immortalwrt
+      WRT_PACKAGE: ''
+      WRT_TEST: false
