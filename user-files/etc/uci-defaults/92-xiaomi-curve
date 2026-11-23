@@ -1,0 +1,6 @@
+#!/bin/sh
+[ -f /etc/config/xiaomi-control ] || exit 0
+uci -q get xiaomi-control.settings.curve >/dev/null || uci set xiaomi-control.settings.curve='40:20,50:35,65:60,80:100'
+uci -q get xiaomi-control.settings.profile >/dev/null || uci set xiaomi-control.settings.profile='auto'
+uci changes xiaomi-control >/dev/null 2>&1 && uci commit xiaomi-control
+exit 0
