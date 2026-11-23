@@ -1,20 +1,8 @@
-# ==========================================================
-# SBE1V1K 全新配方 | 2026-11-23 从零编写，不继承任何旧配置文件
-# ----------------------------------------------------------
-# 主题    : 最新版 Argon（ucode 模板 + rpcd），模板/CSS/Argon Config 保持最新不动
-# 品牌    : sbe1v1k（左上角 / 登录页）
-# 后台    : 192.168.99.1  |  密码 12345678
-# SSID    : SBE1V1K-2.4G / -5.2G / -6G
-# 内置    : 风扇控制、RGB 状态灯、数码罗记 Route Tool、
-#           OpenClash、Honk、OAF —— 依赖全部编进 rootfs，不需事后安装
-# ==========================================================
-
-# ---------- 单机型：只编 SBE1V1K，其余全部关闭 ----------
-CONFIG_TARGET_DEVICE_qualcommbe_ipq95xx_DEVICE_askey_sbe1v1k=y
+CONFIG_TARGET_DEVICE_qualcommbe_ipq95xx_DEVICE_xiaomi_be10000=y
+CONFIG_TARGET_DEVICE_qualcommbe_ipq95xx_DEVICE_askey_sbe1v1k=n
 CONFIG_TARGET_DEVICE_qualcommbe_ipq95xx_DEVICE_nokia_beacon-10=n
 CONFIG_TARGET_DEVICE_qualcommbe_ipq95xx_DEVICE_xiaomi_be7000=n
 CONFIG_TARGET_DEVICE_qualcommbe_ipq95xx_DEVICE_xiaomi_be7000-es=n
-CONFIG_TARGET_DEVICE_qualcommbe_ipq95xx_DEVICE_xiaomi_be10000=n
 CONFIG_TARGET_DEVICE_qualcommbe_ipq95xx_DEVICE_xiaomi_be10000-es=n
 CONFIG_TARGET_DEVICE_qualcommbe_ipq95xx_DEVICE_8devices_kiwi-dvk=n
 CONFIG_TARGET_DEVICE_qualcommbe_ipq95xx_DEVICE_arista_c-460=n
@@ -22,11 +10,14 @@ CONFIG_TARGET_DEVICE_qualcommbe_ipq95xx_DEVICE_linksys_ln6001=n
 CONFIG_TARGET_DEVICE_qualcommbe_ipq95xx_DEVICE_qcom_rdp433=n
 
 CONFIG_PACKAGE_luci-theme-argon=y
+CONFIG_PACKAGE_luci-theme-vantage=y
 CONFIG_PACKAGE_luci-app-argon-config=n
+CONFIG_PACKAGE_wget-ssl=y
+CONFIG_PACKAGE_ucode-mod-math=y
+CONFIG_PACKAGE_flock=y
+CONFIG_PACKAGE_coreutils=y
+CONFIG_PACKAGE_coreutils-timeout=y
 
-# ---------- Honk 内核硬性依赖 ----------
-# BTF 依赖 DEBUG_INFO 且 !DEBUG_INFO_REDUCED；IPQ95XX 默认 REDUCED=y 会把 BTF 丢掉，
-# 内核就不会生成 /sys/kernel/btf/vmlinux，Honk 无法加载 eBPF。必须显式关掉 REDUCED。
 CONFIG_KERNEL_DEBUG_KERNEL=y
 CONFIG_KERNEL_DEBUG_INFO=y
 CONFIG_KERNEL_DEBUG_INFO_REDUCED=n
@@ -47,14 +38,12 @@ CONFIG_KERNEL_NETFILTER_NETLINK_QUEUE=y
 CONFIG_KERNEL_FUNCTION_TRACER=y
 CONFIG_KERNEL_DYNAMIC_FTRACE=y
 
-# ---------- Honk 依赖的树内内核模块 ----------
 CONFIG_PACKAGE_kmod-sched-core=y
 CONFIG_PACKAGE_kmod-sched-bpf=y
 CONFIG_PACKAGE_kmod-veth=y
 CONFIG_PACKAGE_kmod-nft-queue=y
 CONFIG_PACKAGE_kmod-nfnetlink-queue=y
 
-# ---------- Honk 依赖的用户态组件 ----------
 CONFIG_PACKAGE_ca-bundle=y
 CONFIG_PACKAGE_ip-full=y
 CONFIG_PACKAGE_jsonfilter=y
@@ -70,39 +59,11 @@ CONFIG_PACKAGE_v2ray-geosite=y
 CONFIG_PACKAGE_honk=y
 CONFIG_PACKAGE_luci-app-honk=y
 
-# ---------- OAF 应用过滤（含内核模块） ----------
 CONFIG_PACKAGE_appfilter=y
 CONFIG_PACKAGE_oaf=y
-CONFIG_PACKAGE_kmod-oaf=y
 CONFIG_PACKAGE_luci-app-oaf=y
+CONFIG_PACKAGE_luci-compat=y
 
-# ---------- OpenClash + ruby 全套（官方安装脚本的 BASE_DEPS + Makefile DEPENDS） ----------
-CONFIG_PACKAGE_luci-app-openclash=y
-CONFIG_PACKAGE_ruby=y
-CONFIG_PACKAGE_ruby-yaml=y
-CONFIG_PACKAGE_ruby-psych=y
-CONFIG_PACKAGE_ruby-pstore=y
-CONFIG_PACKAGE_unzip=y
-CONFIG_PACKAGE_dnsmasq-full=y
-CONFIG_PACKAGE_kmod-inet-diag=y
-CONFIG_PACKAGE_ip-full=y
-CONFIG_PACKAGE_curl=y
-CONFIG_PACKAGE_ca-bundle=y
-CONFIG_PACKAGE_kmod-tun=y
-CONFIG_PACKAGE_kmod-nft-tproxy=y
-
-# ---------- 上游自带 router-tool（SSID 初始化的后台组件，无菜单） ----------
-CONFIG_PACKAGE_luci-app-router-tool=y
-CONFIG_PACKAGE_luci-i18n-router-tool-zh-cn=y
-
-# ---------- 数码罗记 Route Tool 依赖（gdisk 提供 sgdisk） ----------
-CONFIG_PACKAGE_gdisk=y
-
-# ---------- SBE1V1K 风扇 / RGB 内核驱动 ----------
-CONFIG_PACKAGE_kmod-hwmon-pwmfan=y
-CONFIG_PACKAGE_kmod-leds-pwm=y
-
-# ---------- iStoreOS 风格：开机向导 + 应用商店 + 任务中心 ----------
 CONFIG_PACKAGE_luci-app-quickstart=y
 CONFIG_PACKAGE_quickstart=y
 CONFIG_PACKAGE_luci-app-istorex=y
@@ -114,53 +75,53 @@ CONFIG_PACKAGE_shadow-utils=y
 CONFIG_PACKAGE_shadow-useradd=y
 CONFIG_PACKAGE_mount-utils=y
 CONFIG_PACKAGE_block-mount=y
+CONFIG_PACKAGE_lsblk=y
+CONFIG_PACKAGE_e2fsprogs=y
+CONFIG_PACKAGE_parted=y
+CONFIG_PACKAGE_tar=y
+CONFIG_PACKAGE_libuci-lua=y
 
-# ---------- Docker：dockerman 管理界面 + 引擎全套（包名取自本源已成功编译的产物清单） ----------
-CONFIG_PACKAGE_luci-app-dockerman=y
-CONFIG_PACKAGE_luci-i18n-dockerman-zh-cn=y
-CONFIG_PACKAGE_docker=y
-CONFIG_PACKAGE_dockerd=y
-CONFIG_PACKAGE_docker-compose=y
-CONFIG_PACKAGE_containerd=y
-CONFIG_PACKAGE_runc=y
-CONFIG_PACKAGE_tini=y
-# 容器网络/存储内核模块（dockerd 依赖，显式锁死便于核对）
-CONFIG_PACKAGE_kmod-br-netfilter=y
-CONFIG_PACKAGE_kmod-nf-nat=y
-CONFIG_PACKAGE_kmod-nf-nat6=y
-CONFIG_PACKAGE_kmod-ipt-nat=y
-CONFIG_PACKAGE_kmod-ipt-core=y
-CONFIG_PACKAGE_kmod-nft-nat=y
-CONFIG_PACKAGE_kmod-nft-core=y
-CONFIG_PACKAGE_kmod-macvlan=y
-CONFIG_PACKAGE_kmod-dummy=y
-# Docker 运行必需的内核特性（cgroups / namespaces / overlay / bridge / ipvs）
-CONFIG_KERNEL_CGROUPS=y
-CONFIG_KERNEL_MEMCG=y
-CONFIG_KERNEL_CGROUP_SCHED=y
-CONFIG_KERNEL_CGROUP_FREEZER=y
-CONFIG_KERNEL_CGROUP_PIDS=y
-CONFIG_KERNEL_CGROUP_DEVICE=y
-CONFIG_KERNEL_CGROUP_NET_PRIO=y
-CONFIG_KERNEL_CGROUP_NET_CLASSID=y
-CONFIG_KERNEL_NAMESPACES=y
-CONFIG_KERNEL_UTS_NS=y
-CONFIG_KERNEL_IPC_NS=y
-CONFIG_KERNEL_USER_NS=y
-CONFIG_KERNEL_PID_NS=y
-CONFIG_KERNEL_OVERLAY_FS=y
-CONFIG_KERNEL_BRIDGE=y
-CONFIG_KERNEL_BRIDGE_NETFILTER=y
-CONFIG_KERNEL_IP_VS=y
-CONFIG_KERNEL_IP_VS_RR=y
-CONFIG_KERNEL_IP_VS_NFCT=y
-CONFIG_KERNEL_NETFILTER_XT_MATCH_ADDRTYPE=y
-CONFIG_KERNEL_NETFILTER_XT_MATCH_CONNTRACK=y
-CONFIG_KERNEL_NETFILTER_XT_MATCH_IPVS=y
-CONFIG_KERNEL_SECCOMP=y
-CONFIG_KERNEL_KEYS=y
-CONFIG_KERNEL_POSIX_MQUEUE=y
+CONFIG_PACKAGE_luci-app-re-homeproxy=y
+CONFIG_PACKAGE_luci-app-homeproxy=n
+CONFIG_PACKAGE_luci-i18n-homeproxy-zh-cn=n
+CONFIG_PACKAGE_kmod-nft-tproxy=y
+CONFIG_PACKAGE_kmod-tun=y
+CONFIG_PACKAGE_kmod-nft-queue=y
+CONFIG_PACKAGE_curl=y
 
-# ---------- 上游 GENERAL 基线默认插件：原样保留、正常启用（用户：默认的东西全留，只做加法） ----------
-# GENERAL.txt 第 2 行写死 luci-app-homeproxy=y；本固件没有 re-homeproxy，无冲突，保持默认开启。
-CONFIG_PACKAGE_luci-app-homeproxy=y
+CONFIG_PACKAGE_luci-lib-base=y
+CONFIG_PACKAGE_luci-lib-ipkg=y
+CONFIG_PACKAGE_libstdcpp=y
+CONFIG_PACKAGE_libopenssl=y
+CONFIG_PACKAGE_libcurl=y
+CONFIG_PACKAGE_zlib=y
+
+CONFIG_PACKAGE_rpcd-mod-file=y
+
+CONFIG_PACKAGE_luci-app-xiaomi-control=y
+CONFIG_PACKAGE_kmod-hwmon-emc2305=y
+CONFIG_PACKAGE_kmod-leds-pwm=y
+CONFIG_PACKAGE_ucode=y
+CONFIG_PACKAGE_ucode-mod-fs=y
+CONFIG_PACKAGE_ucode-mod-uci=y
+CONFIG_PACKAGE_ucode-mod-uloop=y
+CONFIG_PACKAGE_ucode-mod-ubus=y
+CONFIG_PACKAGE_i2c-tools=y
+CONFIG_PACKAGE_kmod-i2c-core=y
+
+CONFIG_PACKAGE_luci-app-router-tool=y
+CONFIG_PACKAGE_luci-i18n-router-tool-zh-cn=y
+
+CONFIG_PACKAGE_gdisk=y
+
+CONFIG_PACKAGE_luci-app-openclash=y
+CONFIG_PACKAGE_ruby=y
+CONFIG_PACKAGE_ruby-yaml=y
+CONFIG_PACKAGE_ruby-psych=y
+CONFIG_PACKAGE_ruby-pstore=y
+CONFIG_PACKAGE_unzip=y
+CONFIG_PACKAGE_dnsmasq-full=y
+CONFIG_PACKAGE_kmod-inet-diag=y
+
+CONFIG_TARGET_ROOTFS_SQUASHFS=y
+CONFIG_TARGET_ROOTFS_INITRAMFS=n
