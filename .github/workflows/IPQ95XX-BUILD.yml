@@ -1,5 +1,5 @@
 # SBE1V1K 新固件编译入口（2026-11-23 从零编写，不继承任何旧配置）
-# Argon 主题与字体由 user-files 覆盖：从 LibWrt 参考固件提取的最新版全套
+# Argon 主题模板/CSS/Argon Config 保持最新版不动（user-files 覆盖）；字体用 315 固件提取那套（旧 LibWrt 字体已移除）
 
 name: IPQ95XX-BUILD
 
