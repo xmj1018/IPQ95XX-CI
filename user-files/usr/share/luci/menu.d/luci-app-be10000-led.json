@@ -1,5 +1,5 @@
 {
-	"admin/system/led": {
+	"admin/control/led": {
 		"title": "RGB 状态灯",
 		"order": 96,
 		"action": {
