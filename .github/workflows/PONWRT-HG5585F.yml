@@ -70,8 +70,10 @@ jobs:
       - name: Configure
         run: |
           cd wrt
+          # 完全沿用上游：configs/an7581.config + configs/release.config
+          # 不做 sed 删设备、不手动指定 target —— 上游 an7581.config 里
+          # CONFIG_TARGET_DEVICE_airoha_an7581_DEVICE_fiberhome_hg5585f-ct=y 本来就是开的
           ./scripts/kconfig.pl + configs/an7581.config configs/release.config > .config
-          sed -i '/CONFIG_TARGET_DEVICE_airoha_an7581_DEVICE_/d' .config
           cat ../Config/PONWRT-HG5585F.config >> .config
           make defconfig
           echo "=== 关键配置确认 ==="
@@ -123,7 +125,11 @@ jobs:
       - name: Collect artifacts
         run: |
           mkdir -p out
-          find wrt/bin/targets/airoha/an7581 -maxdepth 1 -type f \( -name "*.bin" -o -name "*.itb" -o -name "*.ubi" -o -name "*.tar" -o -name "sha256sums" \) -exec cp -v {} out/ \;
+          # 上游配置会同时产出多个设备的镜像，这里只挑 HG5585F-CT 相关的
+          find wrt/bin/targets/airoha/an7581 -maxdepth 1 -type f \
+            \( -name "*hg5585f*" -o -name "sha256sums" -o -name "profiles.json" \) \
+            -exec cp -v {} out/ \;
+          echo "--- 产物 ---"
           ls -la out/
 
       - name: Upload artifacts
