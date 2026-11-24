@@ -60,12 +60,20 @@ jobs:
           cd wrt
           echo "src-git honk https://github.com/kenzok8/openwrt-honk.git" >> feeds.conf
           echo "src-git kenzok8 https://github.com/kenzok8/openwrt-packages.git" >> feeds.conf
-          ./scripts/feeds update honk kenzok8
+          echo "src-git partexp https://github.com/sirpdboy/luci-app-partexp.git" >> feeds.conf
+          echo "src-git diskman https://github.com/sbwml/luci-app-diskman.git" >> feeds.conf
+          ./scripts/feeds update honk kenzok8 partexp diskman
           # 额外 feed 只装用到的包：kenzok8 里几百个包若全量 install，
           # 会和默认 feed 重名互相覆盖，带来不可控风险
           ./scripts/feeds install honk luci-app-honk
           ./scripts/feeds install luci-app-store luci-app-istorex luci-app-quickstart quickstart taskd luci-lib-taskd luci-lib-xterm
           ./scripts/feeds install luci-app-argon-config
+          # 分区扩容（sirpdboy）+ 磁盘管理器（sbwml）—— 用户指定，两者默认都在「系统」菜单
+          ./scripts/feeds install luci-app-partexp luci-app-diskman
+          # 依赖校验：两插件的所有依赖必须全部就位，否则 make defconfig 会静默丢弃
+          for p in luci-app-partexp luci-app-diskman fdisk block-mount bc blkid parted btrfs-progs losetup resize2fs e2fsprogs f2fs-tools kmod-loop lsblk ucode smartmontools wipefs dosfstools exfat-fsck exfat-mkfs swap-utils xfs-mkfs kmod-fs-exfat kmod-fs-f2fs kmod-fs-vfat kmod-fs-xfs; do
+            if ls -d package/feeds/*/"$p" >/dev/null 2>&1; then echo "OK      $p"; else echo "MISSING $p"; fi
+          done
           # ★主题默认值（BE10000 同款做法）：LuCI collections 依赖 luci-theme-bootstrap，
           #   bootstrap 的 30_luci-theme-bootstrap 按字母序在 argon 的 30 脚本之后执行，
           #   会把默认主题抢回 bootstrap。把 collections 里的 bootstrap 替换成 argon，
