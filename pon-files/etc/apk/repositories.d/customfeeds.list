@@ -7,8 +7,12 @@
 # 保留只会让 iStore「刷新软件源」报错，故全部剔除。
 # kmods 源指向官方 buildbot 的内核版本，与本固件 vermagic 不匹配，同样剔除。
 #
-# 仅保留官方服务器上真实存在（HTTP 200）的两个仓库：
+# 仅保留官方服务器上真实存在（实测 HTTP 200）的四个仓库：
+#   base / luci / packages —— 软件源刷新与在线安装都靠它们
+#   targets —— 目标机相关包
 # 注意：kmod 内核模块请勿从这里安装（vermagic 不匹配会拒绝加载）；
-#       用户态软件（curl 等）可正常安装。
+#       用户态软件（含 OpenClash 等）可正常从这里安装。
 https://downloads.immortalwrt.org/snapshots/packages/aarch64_cortex-a53/base/packages.adb
+https://downloads.immortalwrt.org/snapshots/packages/aarch64_cortex-a53/luci/packages.adb
+https://downloads.immortalwrt.org/snapshots/packages/aarch64_cortex-a53/packages/packages.adb
 https://downloads.immortalwrt.org/snapshots/targets/airoha/an7581/packages/packages.adb
