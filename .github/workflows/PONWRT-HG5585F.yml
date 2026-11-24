@@ -1,0 +1,114 @@
+name: PONWRT-HG5585F
+
+on:
+  workflow_dispatch:
+
+permissions: write-all
+
+jobs:
+  build:
+    name: HG5585F-CT
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+
+    steps:
+      - name: Checkout builder repo
+        uses: actions/checkout@v4
+
+      - name: Free build space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          sudo apt-get clean
+
+      - name: Install build dependencies
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            asciidoc autoconf automake autopoint binutils bison build-essential \
+            bzip2 ccache clang cmake cpio curl device-tree-compiler flex gawk \
+            gettext git g++-multilib gcc-multilib gperf help2man intltool \
+            libelf-dev libglib2.0-dev libgmp3-dev libltdl-dev libmpc-dev \
+            libmpfr-dev libncurses-dev libpython3-dev libreadline-dev libssl-dev \
+            libtool libyaml-dev lld llvm ninja-build p7zip-full patch pkgconf \
+            python3 python3-docutils python3-pip python3-ply python3-pyelftools \
+            qemu-utils re2c rsync scons squashfs-tools subversion swig texinfo \
+            uglifyjs unzip wget xmlto xxd zlib1g-dev zstd dwarves
+
+      - name: Clone PonWrt upstream (untouched)
+        run: |
+          git clone --depth=1 --single-branch --branch master https://github.com/pbs05/ponwrt.git wrt
+          echo "UPSTREAM_COMMIT=$(git -C wrt rev-parse --short HEAD)" >> "$GITHUB_ENV"
+
+      - name: Add extra feeds (honk / OAF)
+        run: |
+          cd wrt
+          echo "src-git honk https://github.com/kenzok8/openwrt-honk.git" >> feeds.conf
+          echo "src-git oaf https://github.com/destan19/OpenAppFilter.git" >> feeds.conf
+
+      - name: Update and install feeds
+        run: |
+          cd wrt
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+
+      - name: Cache downloads
+        uses: actions/cache@v4
+        with:
+          path: wrt/dl
+          key: ponwrt-hg5585f-dl-${{ hashFiles('Config/PONWRT-HG5585F.config') }}
+          restore-keys: |
+            ponwrt-hg5585f-dl-
+
+      - name: Overlay custom files (hostname + argon theme/fonts)
+        run: |
+          mkdir -p wrt/files
+          cp -af pon-files/. wrt/files/
+          echo "overlay files: $(find wrt/files -type f | wc -l)"
+
+      - name: Configure
+        run: |
+          cd wrt
+          ./scripts/kconfig.pl + configs/an7581.config configs/release.config > .config
+          sed -i '/CONFIG_TARGET_DEVICE_airoha_an7581_DEVICE_/d' .config
+          cat ../Config/PONWRT-HG5585F.config >> .config
+          make defconfig
+          echo "=== 关键配置确认 ==="
+          grep -E "DEVICE_fiberhome_hg5585f-ct=|DEBUG_INFO_BTF|PACKAGE_honk=|luci-app-honk=|luci-theme-argon=|crypto-hw-eip93=" .config || true
+
+      - name: Download package sources
+        run: |
+          cd wrt
+          make download -j"$(nproc)" || true
+
+      - name: Build firmware
+        run: |
+          cd wrt
+          make -j"$(nproc)" V=s 2>&1 | tail -n 200
+
+      - name: Collect artifacts
+        run: |
+          mkdir -p out
+          find wrt/bin/targets/airoha/an7581 -maxdepth 1 -type f \( -name "*.bin" -o -name "*.itb" -o -name "*.ubi" -o -name "*.tar" -o -name "sha256sums" \) -exec cp -v {} out/ \;
+          ls -la out/
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ponwrt-hg5585f-ct-${{ env.UPSTREAM_COMMIT }}
+          path: out/*
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Create release
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="hg5585f-$(date +%y%m%d-%H%M)"
+          gh release create "$TAG" out/* \
+            --repo "${{ github.repository }}" \
+            --title "PonWrt HG5585F-CT $TAG" \
+            --notes "上游 pbs05/ponwrt@${{ env.UPSTREAM_COMMIT }} 原样编译；新增 honk(BTF)、EIP93 AES 加速、argon 主题；主机名 HG5585F" \
+            --prerelease
