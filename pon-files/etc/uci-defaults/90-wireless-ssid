@@ -1,0 +1,22 @@
+#!/bin/sh
+# 默认 SSID：HG5585F-2.4G / HG5585F-5G
+# 兼容 band（OpenWrt master 写法）与 hwmode（旧写法）两种配置风格；
+# 同时确保 radio 未被禁用、默认加密为 WPA2/WPA3 混合（密码 12345678，可改）。
+
+[ -f /etc/config/wireless ] || exit 0
+
+for r in $(uci show wireless 2>/dev/null | grep -oE '^wireless\.radio[0-9]+' | cut -d. -f2 | sort -u); do
+	band=$(uci -q get wireless.$r.band)
+	[ -z "$band" ] && band=$(uci -q get wireless.$r.hwmode)
+	case "$band" in
+		2g|11g) uci set wireless.$r.ssid='HG5585F-2.4G' ;;
+		5g|11a) uci set wireless.$r.ssid='HG5585F-5G' ;;
+		*) continue ;;
+	esac
+	uci set wireless.$r.disabled='0'
+	uci set wireless.$r.encryption='sae-mixed'
+	uci set wireless.$r.key='12345678'
+done
+
+uci commit wireless
+exit 0
