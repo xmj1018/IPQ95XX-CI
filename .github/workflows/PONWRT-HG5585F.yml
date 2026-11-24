@@ -88,6 +88,15 @@ jobs:
           cd wrt
           make download -j"$(nproc)" || true
 
+      - name: Prebuild luci host tools (po2lmo / jsmin)
+        run: |
+          cd wrt
+          # honk 的 luci-app-honk 不走标准 luci.mk，直接裸调 po2lmo 却没声明
+          # 对 luci-base 的 host 依赖，必须先构建这两个 host 工具，否则 Error 127
+          make -j"$(nproc)" package/feeds/luci/luci-base/host/compile V=s
+          echo "--- host 工具确认 ---"
+          ls -la staging_dir/host/bin/ | grep -iE "po2lmo|jsmin" || { echo "po2lmo 未生成，构建会失败"; exit 1; }
+
       - name: Build firmware
         run: |
           cd wrt
