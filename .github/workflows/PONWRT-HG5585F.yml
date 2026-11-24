@@ -41,17 +41,34 @@ jobs:
           git clone --depth=1 --single-branch --branch master https://github.com/pbs05/ponwrt.git wrt
           echo "UPSTREAM_COMMIT=$(git -C wrt rev-parse --short HEAD)" >> "$GITHUB_ENV"
 
+      - name: Update and install upstream feeds
+        run: |
+          cd wrt
+          # ★关键：上游仓库只带 feeds.conf.default，没有 feeds.conf。
+          #   若直接 `>> feeds.conf` 会新建一个只含额外 feed 的文件，
+          #   导致 packages / luci / routing / pon_drivers / pon_userspace 全部缺失
+          #   （luci-base、argon、sqlite3-cli、v2ray-geoip 等统统找不到）。
+          #   先还原上游默认 feed 清单，再全量安装，与上游 release.yml 一致。
+          [ -f feeds.conf ] || cp feeds.conf.default feeds.conf
+          echo "=== 生效的 feeds.conf ==="
+          cat feeds.conf
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+
       - name: Add extra feeds (honk / iStore)
         run: |
           cd wrt
           echo "src-git honk https://github.com/kenzok8/openwrt-honk.git" >> feeds.conf
           echo "src-git kenzok8 https://github.com/kenzok8/openwrt-packages.git" >> feeds.conf
-
-      - name: Update and install feeds
-        run: |
-          cd wrt
-          ./scripts/feeds update -a
-          ./scripts/feeds install -a
+          ./scripts/feeds update honk kenzok8
+          # 额外 feed 只装用到的包：kenzok8 里几百个包若全量 install，
+          # 会和默认 feed 重名互相覆盖，带来不可控风险
+          ./scripts/feeds install honk luci-app-honk
+          ./scripts/feeds install luci-app-store luci-app-istorex luci-app-quickstart quickstart taskd luci-lib-taskd luci-lib-xterm
+          echo "=== 关键包是否就位 ==="
+          for p in luci-base luci-theme-argon luci-app-argon-config sqlite3-cli v2ray-geoip v2ray-geosite kmod-sched-bpf kmod-crypto-hw-eip93 honk luci-app-honk luci-app-store quickstart taskd; do
+            if ls -d package/feeds/*/"$p" >/dev/null 2>&1; then echo "OK      $p"; else echo "MISSING $p"; fi
+          done
 
       - name: Cache downloads
         uses: actions/cache@v4
@@ -91,26 +108,27 @@ jobs:
       - name: Prebuild luci host tools (po2lmo / jsmin)
         run: |
           cd wrt
-          # honk 的 luci-app-honk 不走标准 luci.mk，Build/Prepare 里直接裸调 po2lmo，
-          # 却没声明对 luci-base host 工具（po2lmo/jsmin）的编译依赖。
-          # 这里直接用宿主 cc 在 luci-base/src 里把两个工具编出来，放进 staging_dir/host/bin，
-          # 等价于上游 luci-base 的 Host/Compile（make -C src/ clean po2lmo jsmin）：
-          #   po2lmo := po2lmo.o + lib/lmo.o + lib/plural_formula.o（.y 由自带 lemon 生成）
+          # honk 的 luci-app-honk 不走标准 luci.mk，Build/Prepare 里直接裸调 po2lmo。
+          # 正常情况：luci feed 存在 + 它声明了 luci-base/host 构建依赖，make 会自动编出 po2lmo。
+          # 这里额外主动编一份放 staging_dir/host/bin，作为保险；失败只告警不中断。
+          set +e
           LUCIBASE="feeds/luci/modules/luci-base"
-          if [ ! -d "$LUCIBASE/src" ]; then
-            LUCIBASE=$(dirname "$(dirname "$(find . -path '*luci-base/src/po2lmo.c' | head -1)")")
+          if [ ! -f "$LUCIBASE/src/po2lmo.c" ]; then
+            LUCIBASE=$(dirname "$(dirname "$(find feeds -name po2lmo.c | head -1)")")
           fi
           echo "luci-base src: $LUCIBASE/src"
-          make -C "$LUCIBASE/src" clean po2lmo jsmin
-          mkdir -p staging_dir/host/bin
-          install -m 0755 "$LUCIBASE/src/po2lmo" staging_dir/host/bin/po2lmo
-          if [ -x "$LUCIBASE/src/jsmin" ]; then
-            install -m 0755 "$LUCIBASE/src/jsmin" staging_dir/host/bin/jsmin
+          if [ -f "$LUCIBASE/src/po2lmo.c" ]; then
+            make -C "$LUCIBASE/src" clean po2lmo jsmin
+            mkdir -p staging_dir/host/bin
+            install -m 0755 "$LUCIBASE/src/po2lmo" staging_dir/host/bin/po2lmo
+            if [ -x "$LUCIBASE/src/jsmin" ]; then
+              install -m 0755 "$LUCIBASE/src/jsmin" staging_dir/host/bin/jsmin
+            fi
+          else
+            echo "WARN: 未找到 po2lmo.c，交给 luci-base/host 构建依赖处理"
           fi
           echo "--- host 工具确认 ---"
-          ls -la staging_dir/host/bin/ | grep -iE "po2lmo|jsmin" || { echo "po2lmo 未生成，构建会失败"; exit 1; }
-          echo "--- po2lmo 自检 ---"
-          staging_dir/host/bin/po2lmo 2>&1 | head -3 || true
+          ls -la staging_dir/host/bin/ 2>/dev/null | grep -iE "po2lmo|jsmin" || echo "WARN: po2lmo 尚未生成（将由 luci-base/host 提供）"
 
       - name: Build firmware
         run: |
