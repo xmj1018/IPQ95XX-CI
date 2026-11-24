@@ -76,6 +76,10 @@ jobs:
           make defconfig
           echo "=== 关键配置确认 ==="
           grep -E "DEVICE_fiberhome_hg5585f-ct=|DEBUG_INFO_BTF|PACKAGE_honk=|luci-app-honk=|luci-theme-argon=|crypto-hw-eip93=" .config || true
+          echo "=== 增量包是否全部生效（被丢弃的会显示 MISSING）==="
+          for p in honk luci-app-honk luci-app-store luci-app-istorex luci-app-quickstart quickstart taskd luci-lib-taskd luci-lib-xterm luci-theme-argon luci-app-argon-config kmod-crypto-hw-eip93 zram-swap kmod-zram v2ray-geoip v2ray-geosite kmod-sched-bpf kmod-nft-queue; do
+            if grep -q "^CONFIG_PACKAGE_${p}=y" .config; then echo "OK   ${p}"; else echo "MISSING ${p}"; fi
+          done
 
       - name: Download package sources
         run: |
@@ -85,7 +89,36 @@ jobs:
       - name: Build firmware
         run: |
           cd wrt
-          make -j"$(nproc)" V=s 2>&1 | tail -n 200
+          set -o pipefail
+          if make -j"$(nproc)" V=s > ../build.log 2>&1; then
+            echo "########## BUILD OK ##########"
+            tail -n 40 ../build.log
+          else
+            echo "########## BUILD FAILED ##########"
+            echo "--- 失败点（make 报错） ---"
+            grep -n -E "make\[[0-9]+\]: \*\*\* .*Error [0-9]" ../build.log | tail -30
+            echo "--- 具体 error 行 ---"
+            grep -n -iE "^[^ ]*(error|Error)[: ]|error: |fatal error|undefined reference|No rule to make target" ../build.log | tail -40
+            echo "--- 尾部 120 行 ---"
+            tail -n 120 ../build.log
+            echo "--- 失败包日志 ---"
+            ls -t logs/ 2>/dev/null | head -10
+            exit 1
+          fi
+
+      - name: Upload build log
+        if: always()
+        run: |
+          if [ -f build.log ]; then gzip -9 -c build.log > build.log.gz; ls -la build.log.gz; fi
+
+      - name: Save build log artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: build.log.gz
+          retention-days: 7
+          if-no-files-found: warn
 
       - name: Collect artifacts
         run: |
