@@ -1,0 +1,12 @@
+#!/bin/sh
+# Honk 要求 ≥4MiB 的 Loyalsoldier 版 geodata（国内优化、含 cn 分流规则），
+# 而 v2ray-geosite 包自带的是官方精简版（约 1.4MiB），过不了 Honk 初始化校验。
+# 首次开机后台调用 luci-app-honk 自带的 update-geo.sh 拉取正式数据
+# （该脚本自带大小/格式校验与原子替换，依赖 curl —— 已编入固件）。
+(
+	sleep 25
+	/usr/share/luci-app-honk/update-geo.sh geosite
+	/usr/share/luci-app-honk/update-geo.sh geoip
+) >/dev/null 2>&1 &
+
+exit 0
