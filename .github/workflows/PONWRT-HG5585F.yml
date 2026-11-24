@@ -65,8 +65,16 @@ jobs:
           # 会和默认 feed 重名互相覆盖，带来不可控风险
           ./scripts/feeds install honk luci-app-honk
           ./scripts/feeds install luci-app-store luci-app-istorex luci-app-quickstart quickstart taskd luci-lib-taskd luci-lib-xterm
+          ./scripts/feeds install luci-app-argon-config
+          # ★主题默认值（BE10000 同款做法）：LuCI collections 依赖 luci-theme-bootstrap，
+          #   bootstrap 的 30_luci-theme-bootstrap 按字母序在 argon 的 30 脚本之后执行，
+          #   会把默认主题抢回 bootstrap。把 collections 里的 bootstrap 替换成 argon，
+          #   bootstrap 就不会被拉进固件，argon 成为唯一默认主题。
+          find feeds/luci/collections -type f -name Makefile \
+            -exec sed -i 's/luci-theme-bootstrap/luci-theme-argon/g' {} +
+          grep -rn "luci-theme" feeds/luci/collections/*/Makefile || true
           echo "=== 关键包是否就位 ==="
-          for p in luci-base luci-theme-argon luci-app-argon-config sqlite3-cli v2ray-geoip v2ray-geosite kmod-sched-bpf kmod-crypto-hw-eip93 honk luci-app-honk luci-app-store quickstart taskd; do
+          for p in luci-base luci-theme-argon luci-app-argon-config sqlite3-cli v2ray-geoip v2ray-geosite kmod-sched-bpf kmod-crypto-hw-eip93 honk luci-app-honk luci-app-store luci-app-istorex luci-app-quickstart quickstart taskd; do
             if ls -d package/feeds/*/"$p" >/dev/null 2>&1; then echo "OK      $p"; else echo "MISSING $p"; fi
           done
 
@@ -93,6 +101,17 @@ jobs:
           ./scripts/kconfig.pl + configs/an7581.config configs/release.config > .config
           cat ../Config/PONWRT-HG5585F.config >> .config
           make defconfig
+          # ★诊断：抓取 defconfig 的递归依赖报错上下文（上一轮 luci-app-store 被丢弃的原因）
+          if grep -q "recursive dependency" ../defconfig_probe.log 2>/dev/null; then :; fi
+          echo "=== 递归依赖诊断 ==="
+          make defconfig > ../defconfig.log 2>&1 || true
+          grep -n "recursive dependency" ../defconfig.log || echo "(无递归依赖)"
+          for L in $(grep -oE 'tmp/\.config-package\.in:[0-9]+' ../defconfig.log | cut -d: -f2 | sort -u | head -3); do
+            echo "--- tmp/.config-package.in 第 $L 行上下文 ---"
+            awk -v s=$((L-12)) -v e=$((L+12)) 'NR>=s && NR<=e {print NR": "$0}' tmp/.config-package.in
+          done
+          echo "=== iStore 三件套最终状态 ==="
+          grep -E "CONFIG_PACKAGE_luci-app-(store|istorex|quickstart)=|^# CONFIG_PACKAGE_luci-app-(store|istorex|quickstart) " .config || echo "(符号不存在)"
           echo "=== 关键配置确认 ==="
           grep -E "DEVICE_fiberhome_hg5585f-ct=|DEBUG_INFO_BTF|PACKAGE_honk=|luci-app-honk=|luci-theme-argon=|crypto-hw-eip93=" .config || true
           echo "=== 增量包是否全部生效（被丢弃的会显示 MISSING）==="
