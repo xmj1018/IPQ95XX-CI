@@ -41,11 +41,10 @@ jobs:
           git clone --depth=1 --single-branch --branch master https://github.com/pbs05/ponwrt.git wrt
           echo "UPSTREAM_COMMIT=$(git -C wrt rev-parse --short HEAD)" >> "$GITHUB_ENV"
 
-      - name: Add extra feeds (honk / OAF / iStore)
+      - name: Add extra feeds (honk / iStore)
         run: |
           cd wrt
           echo "src-git honk https://github.com/kenzok8/openwrt-honk.git" >> feeds.conf
-          echo "src-git oaf https://github.com/destan19/OpenAppFilter.git" >> feeds.conf
           echo "src-git kenzok8 https://github.com/kenzok8/openwrt-packages.git" >> feeds.conf
 
       - name: Update and install feeds
