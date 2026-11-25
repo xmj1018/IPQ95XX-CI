@@ -6,7 +6,7 @@ if ! uci -q get router-tool.defaults.ssid >/dev/null 2>&1; then
 	fi
 fi
 
-uci set router-tool.defaults.ssid='MiBE10000'
+uci set router-tool.defaults.ssid='BE10000'
 uci set router-tool.defaults.key='12345678'
 uci commit router-tool 2>/dev/null || true
 

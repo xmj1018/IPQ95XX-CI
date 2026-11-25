@@ -33,7 +33,7 @@ if [ -d "$GITHUB_WORKSPACE/user-files" ]; then
     ./files/usr/libexec/route-tool \
     ./files/usr/libexec/route-tool.d/*.sh 2>/dev/null || :
   chmod 644 ./files/usr/lib/lua/luci/controller/route_tool.lua 2>/dev/null || :
-  echo "MiBE10000 user-files overlaid: $(find ./files -type f | wc -l) files"
+  echo "BE10000 user-files overlaid: $(find ./files -type f | wc -l) files"
 else
   echo "WARN: user-files not found, skip overlay"
 fi
