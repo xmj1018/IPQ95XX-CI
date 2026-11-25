@@ -9,7 +9,8 @@ CONFIG_TARGET_DEVICE_qualcommbe_ipq95xx_DEVICE_arista_c-460=n
 CONFIG_TARGET_DEVICE_qualcommbe_ipq95xx_DEVICE_linksys_ln6001=n
 CONFIG_TARGET_DEVICE_qualcommbe_ipq95xx_DEVICE_qcom_rdp433=n
 
-# argon 3.2.0(作者官方源)已集成 argon-config 进主题，只勾主题、不勾独立插件
+# Argon 3.2.0(作者官方源 jerrykuku master)已集成 argon-config 进主题，只勾主题、不勾独立插件；
+# 字体使用主题官方自带文件(不做 fonts/ 覆盖)，与 PONWRT-HG5585F 保持一致。
 CONFIG_PACKAGE_luci-theme-argon=y
 CONFIG_PACKAGE_wget-ssl=y
 CONFIG_PACKAGE_ucode-mod-math=y

@@ -15,9 +15,18 @@ UPDATE_PACKAGE "luci-app-re-homeproxy" "1andrevich/homeproxy-hiddify" "master" "
 if [ -d "$GITHUB_WORKSPACE/user-files" ]; then
   mkdir -p ./files
   cp -af "$GITHUB_WORKSPACE/user-files/." ./files/
-  # argon 已改用作者官方源 3.2.0：旧的 argon rpcd/uci-defaults 覆盖文件已移除，
-  # 只保留字体(fonts/)覆盖——官方新版同样用 GoogleSans + TypoGraphica，
-  # 这里用小米万兆原版字体(含 woff 兼容格式)覆盖，确保字体外观和以前一致。
+  # Argon 统一为作者官方源(jerrykuku master 3.2.0)+ 官方自带字体，与 PONWRT-HG5585F 完全一致：
+  #   - 旧的 argon rpcd / uci-defaults 覆盖文件已移除；
+  #   - user-files/www/luci-static/argon/fonts/ 字体覆盖目录已整体删除，
+  #     不再用小米原版字体(以及旧版残留的 argon.woff 图标字体)覆盖主题；
+  #   - 官方主题 fonts/ 只含 GoogleSans-Regular.woff2 + TypoGraphica.woff2，
+  #     base.css 的 @font-face 直接引用这两个文件，编译后即为官方字体。
+  ARGON_FONTS="./package/luci-theme-argon/htdocs/luci-static/argon/fonts"
+  if [ -d "$ARGON_FONTS" ]; then
+    echo "Argon official fonts: $(ls -1 "$ARGON_FONTS" | tr '\n' ' ')"
+  else
+    echo "WARN: Argon official fonts dir not found (check Packages.sh clone)"
+  fi
   chmod 755 \
     ./files/etc/uci-defaults/* \
     ./files/etc/init.d/* \
