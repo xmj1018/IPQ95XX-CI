@@ -69,7 +69,15 @@ jobs:
           # 会和默认 feed 重名互相覆盖，带来不可控风险
           ./scripts/feeds install honk luci-app-honk
           ./scripts/feeds install luci-app-store luci-app-istorex luci-app-quickstart quickstart taskd luci-lib-taskd luci-lib-xterm
-          ./scripts/feeds install luci-app-argon-config
+          # ★Argon 强制最新版：官方 luci feed 是旧版 3.1.4(20261113)，
+          #   kenzok8 feed 是最新 3.2.0(20261124)，且 argon-config 已集成进主题、
+          #   中文翻译内置。先删掉 install -a 拉进来的官方旧软链，再用 -p 优先装 kenzok8，
+          #   避免两个 feed 同名包互相冲突。
+          rm -f package/feeds/luci/luci-theme-argon
+          ./scripts/feeds install -p kenzok8 luci-theme-argon luci-app-argon-config
+          echo "=== Argon 版本确认（主题必须 3.2.0）==="
+          grep -hE '^PKG_VERSION|^PKG_RELEASE|^LUCI_BASENAME' package/feeds/kenzok8/luci-theme-argon/Makefile || echo "MISSING kenzok8 argon"
+          ls -d package/feeds/kenzok8/luci-theme-argon package/feeds/kenzok8/luci-i18n-argon-config-zh-cn 2>/dev/null || true
           # 分区扩容（sirpdboy）+ 磁盘管理器（sbwml）—— 用户指定，两者默认都在「系统」菜单
           ./scripts/feeds install luci-app-partexp luci-app-diskman
           # OpenClash：官方 luci feed 已随 install -a 就位，确认一下
