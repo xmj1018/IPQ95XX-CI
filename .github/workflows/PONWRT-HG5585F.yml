@@ -86,7 +86,7 @@ jobs:
             -exec sed -i 's/luci-theme-bootstrap/luci-theme-argon/g' {} +
           grep -rn "luci-theme" feeds/luci/collections/*/Makefile || true
           echo "=== 关键包是否就位 ==="
-          for p in luci-base luci-theme-argon luci-app-argon-config sqlite3-cli v2ray-geoip v2ray-geosite kmod-sched-bpf kmod-crypto-hw-eip93 honk luci-app-honk luci-app-store luci-app-istorex luci-app-quickstart quickstart taskd; do
+          for p in luci-base luci-theme-argon luci-app-argon-config sqlite3-cli v2ray-geoip v2ray-geosite kmod-sched-bpf kmod-crypto-hw-eip93 honk luci-app-honk luci-app-store luci-app-istorex luci-app-quickstart luci-i18n-quickstart-zh-cn luci-i18n-argon-config-zh-cn quickstart taskd xz-utils tar; do
             if ls -d package/feeds/*/"$p" >/dev/null 2>&1; then echo "OK      $p"; else echo "MISSING $p"; fi
           done
 
@@ -127,7 +127,7 @@ jobs:
           echo "=== 关键配置确认 ==="
           grep -E "DEVICE_fiberhome_hg5585f-ct=|DEBUG_INFO_BTF|PACKAGE_honk=|luci-app-honk=|luci-theme-argon=|crypto-hw-eip93=" .config || true
           echo "=== 增量包是否全部生效（被丢弃的会显示 MISSING）==="
-          for p in honk luci-app-honk luci-app-store luci-app-istorex luci-app-quickstart quickstart taskd luci-lib-taskd luci-lib-xterm luci-theme-argon luci-app-argon-config kmod-crypto-hw-eip93 zram-swap kmod-zram v2ray-geoip v2ray-geosite kmod-sched-bpf kmod-nft-queue; do
+          for p in honk luci-app-honk luci-app-store luci-app-istorex luci-app-quickstart luci-i18n-quickstart-zh-cn luci-i18n-argon-config-zh-cn quickstart taskd luci-lib-taskd luci-lib-xterm xz-utils tar libuci-lua mount-utils luci-theme-argon luci-app-argon-config kmod-crypto-hw-eip93 zram-swap kmod-zram v2ray-geoip v2ray-geosite kmod-sched-bpf kmod-nft-queue; do
             if grep -q "^CONFIG_PACKAGE_${p}=y" .config; then echo "OK   ${p}"; else echo "MISSING ${p}"; fi
           done
 
@@ -197,6 +197,10 @@ jobs:
 
       - name: Collect artifacts
         run: |
+          echo "=== iStoreOS 组件产物确认 ==="
+          find wrt/bin/targets/airoha/an7581/packages -maxdepth 1 -type f \
+            \( -iname "*istore*" -o -iname "*quickstart*" -o -iname "*taskd*" \) \
+            -printf "%f\n" 2>/dev/null | sort | head -30 || true
           mkdir -p out
           # 上游配置会同时产出多个设备的镜像，这里只挑 HG5585F-CT 相关的
           find wrt/bin/targets/airoha/an7581 -maxdepth 1 -type f \
@@ -222,5 +226,5 @@ jobs:
           gh release create "$TAG" out/* \
             --repo "${{ github.repository }}" \
             --title "PonWrt HG5585F-CT $TAG" \
-            --notes "上游 pbs05/ponwrt@${{ env.UPSTREAM_COMMIT }} 原样编译；新增 honk(BTF)、EIP93 AES 加速、argon 主题；主机名 HG5585F" \
+            --notes "上游 pbs05/ponwrt@${{ env.UPSTREAM_COMMIT }} 原样编译；新增 honk(BTF)、EIP93 AES 加速、argon/iStoreOS 风格（iStore 商店 + istorex + QuickStart 首页 + 中文）、OpenClash、分区扩容、磁盘管理；主机名 HG5585F" \
             --prerelease
