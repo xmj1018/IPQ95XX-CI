@@ -6,7 +6,16 @@ if ! uci -q get router-tool.defaults.ssid >/dev/null 2>&1; then
 	fi
 fi
 
-uci set router-tool.defaults.ssid='SBE1V1K'
+# 无线名前缀统一跟随品牌字(WRT_NAME / hostname)。
+# 编译期 Scripts/Settings.sh 已把 WRT_SSID 写进 router-tool.defaults.ssid，
+# 这里只在为空时按 hostname 兜底，避免把共用 user-files 的其它机型
+# （例如小米万兆 BE10000）覆盖成写死的型号名。
+if [ -z "$(uci -q get router-tool.defaults.ssid 2>/dev/null)" ]; then
+	BRAND="$(uci -q get system.@system[0].hostname 2>/dev/null)"
+	[ -n "$BRAND" ] || BRAND=OWRT
+	uci set router-tool.defaults.ssid="$BRAND"
+fi
+
 uci set router-tool.defaults.key='12345678'
 uci commit router-tool 2>/dev/null || true
 

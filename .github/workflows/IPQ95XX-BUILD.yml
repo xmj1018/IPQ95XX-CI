@@ -14,8 +14,10 @@ jobs:
       WRT_THEME: argon
       # SBE1V1K 单机型原样（Argon 官方源/主题/插件/字体保持本次改动，其余不动）
       WRT_NAME: SBE1V1K
-      # OWRT 是上游 router-tool 用来识别默认 AP 的字面量，改动会导致无线不初始化
-      WRT_SSID: OWRT
+      # 无线名前缀与名牌(WRT_NAME)保持一致；上游 mac80211.uc 的 default_ssid()
+      # 会自动拼 -2.4G / -5.2G / -5.8G / -6G 频段后缀
+      # （旧注释称 OWRT 改了无线不初始化，经查当前上游 owrt 分支无此依赖：OWRT 只是 hostname 兜底值）
+      WRT_SSID: SBE1V1K
       WRT_WORD: 12345678
       WRT_IP: 192.168.99.1
       WRT_PW: 无
