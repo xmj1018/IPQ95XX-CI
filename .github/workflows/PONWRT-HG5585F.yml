@@ -51,7 +51,11 @@ jobs:
           #       bridge fastpath 的 TTL/hop-limit 保留 —— 让流量更多走 NPU/PPE 硬件，
           #       减少 CPU 软件转发，提升 NAT/桥接吞吐。
           # 不带 Kconfig 改动，不需要新增 config 符号或固件文件。
-          cp -af ../patches/npu/*.patch wrt/target/linux/airoha/patches-6.18/
+          # 当前目录是仓库根，patches/ 就在根下（不要写 ../，会跑到仓库外）
+          N=$(ls -1 patches/npu/*.patch 2>/dev/null | wc -l)
+          echo "待叠加 NPU 补丁数: $N (应为 8)"
+          [ "$N" -eq 8 ] || { echo "ERROR: NPU 补丁数量不对，中止"; exit 1; }
+          cp -af patches/npu/*.patch wrt/target/linux/airoha/patches-6.18/
           echo "=== 已叠加的 NPU 补丁 ==="
           ls -1 wrt/target/linux/airoha/patches-6.18/ | grep -E '^(931|932|941|947|951)' || true
           echo "=== airoha 补丁总数 ==="
