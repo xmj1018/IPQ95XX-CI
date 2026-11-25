@@ -1,18 +1,19 @@
-# 本固件定制源（构建时写入，覆盖 base-files 生成的默认版本）
+# 本固件软件源（唯一生效源清单）
 #
-# 默认生成版会把所有 feed 都映射到官方快照服务器：
+# 编译期 base-files 会自动生成 distfeeds.list，按 feeds.conf 里每个 feed 拼一行：
 #   https://downloads.immortalwrt.org/snapshots/packages/aarch64_cortex-a53/<feed>/packages.adb
-# 但 honk / kenzok8 / video / pon_drivers / pon_userspace 这些 feed 的包
-# 已直接编入本固件镜像，官方服务器上根本没有这些目录（404），
-# 保留只会让 iStore「刷新软件源」报错，故全部剔除。
-# kmods 源指向官方 buildbot 的内核版本，与本固件 vermagic 不匹配，同样剔除。
+# 其中 video / pon_drivers / pon_userspace（上游自带）+
+# honk / kenzok8 / partexp / diskman（本固件新增）这 7 个目录官方服务器不存在（404），
+# apk update 访问失败 -> wget exit 8 -> 整体返回码 7，iStore 刷新/更新全部报错。
+# 本固件已用 files overlay 把 distfeeds.list 覆盖为空，只剩本文件提供源。
 #
-# 仅保留官方服务器上真实存在（实测 HTTP 200）的四个仓库：
-#   base / luci / packages —— 软件源刷新与在线安装都靠它们
-#   targets —— 目标机相关包
-# 注意：kmod 内核模块请勿从这里安装（vermagic 不匹配会拒绝加载）；
-#       用户态软件（含 OpenClash 等）可正常从这里安装。
+# 以下 6 个源均实测 HTTP 200（2026-11-25），覆盖软件园在线安装所需：
+#   base / luci / packages / routing / telephony / targets
+# 注意：kmod 内核模块请勿从这里安装（vermagic 与固件不匹配会拒绝加载）；
+#       用户态软件（含 argon、OpenClash 等）可正常在线安装/更新。
 https://downloads.immortalwrt.org/snapshots/packages/aarch64_cortex-a53/base/packages.adb
 https://downloads.immortalwrt.org/snapshots/packages/aarch64_cortex-a53/luci/packages.adb
 https://downloads.immortalwrt.org/snapshots/packages/aarch64_cortex-a53/packages/packages.adb
+https://downloads.immortalwrt.org/snapshots/packages/aarch64_cortex-a53/routing/packages.adb
+https://downloads.immortalwrt.org/snapshots/packages/aarch64_cortex-a53/telephony/packages.adb
 https://downloads.immortalwrt.org/snapshots/targets/airoha/an7581/packages/packages.adb

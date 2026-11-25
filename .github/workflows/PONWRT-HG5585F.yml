@@ -112,6 +112,35 @@ jobs:
           cp -af pon-files/. wrt/files/
           echo "overlay files: $(find wrt/files -type f | wc -l)"
 
+          # ★根治 apk update 报 7 个 404 源错误：
+          # base-files 的 Makefile 会把 distfeeds.list 打包进 base-files IPK，
+          # 里面按每个 feed 拼一行 .../packages/<feed>/packages.adb，
+          # 其中 video/pon_drivers/pon_userspace(上游) + honk/kenzok8/partexp/diskman(新增)
+          # 这 7 个目录官方服务器 404，apk update 一访问就 wget exit 8、整体返回码 7，
+          # iStore「刷新软件源/软件园更新」全崩。
+          # 两道保险：
+          #  (1) 文件：files overlay 提供空的 distfeeds.list（覆盖 base-files 自动生成版）
+          #      + 补全的 customfeeds.list（6 个实测 HTTP 200 的真实源）；
+          #  (2) 源头：patch base-files Makefile，生成时即 sed 删掉坏源行（双保险）。
+          cd wrt
+          BF_MAKEFILE=""
+          for d in package/base-files package/system/base-files; do
+            [ -f "$d/Makefile" ] && BF_MAKEFILE="$d/Makefile" && break
+          done
+          if [ -n "$BF_MAKEFILE" ]; then
+            echo "patching $BF_MAKEFILE"
+            # 在 FeedSourcesAppendAPK 之后插入删除坏源行的动作（awk 避免 sed 分隔符冲突）。
+            if grep -q 'pon_drivers|pon_userspace|honk|kenzok8' "$BF_MAKEFILE"; then
+              echo "already patched"
+            else
+              awk '/FeedSourcesAppendAPK.*distfeeds\.list/ && !d {print $0 "; sed -i -E '\''/\\/(video|pon_drivers|pon_userspace|honk|kenzok8|partexp|diskman)\\/packages\\.adb/d'\'' $(1)/etc/apk/repositories.d/distfeeds.list"; d=1; next} {print}' "$BF_MAKEFILE" > "$BF_MAKEFILE.tmp" && mv "$BF_MAKEFILE.tmp" "$BF_MAKEFILE"
+              echo "patched"
+            fi
+            grep -n "distfeeds.list" "$BF_MAKEFILE" | head -5
+          else
+            echo "WARN: base-files Makefile not found, rely on files overlay only"
+          fi
+
       - name: Configure
         run: |
           cd wrt

@@ -1,0 +1,10 @@
+# 本文件由固件 files overlay 提供，覆盖 base-files IPK 自动生成的版本。
+#
+# base-files 自动生成版（feeds.mk / FeedSourcesAppendAPK）会按 feeds.conf 里
+# 每个 feed 拼一行 .../packages/<feed>/packages.adb，其中
+# video / pon_drivers / pon_userspace（上游自带）+
+# honk / kenzok8 / partexp / diskman（本固件新增）这 7 个目录官方服务器不存在（404），
+# apk update 访问失败 -> wget exit 8 -> 返回码 7 -> iStore 刷新/更新全部报错。
+#
+# 这里覆盖成空（只留注释）：apk 只读同目录 customfeeds.list 里的 6 个真实源。
+# 另有一道保险：workflow 里 patch 了 base-files Makefile 生成时即删掉坏源行。
