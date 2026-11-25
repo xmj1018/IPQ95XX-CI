@@ -12,12 +12,12 @@ jobs:
     with:
       WRT_CONFIG: IPQ95XX
       WRT_THEME: argon
-      # WRT_NAME = hostname，新版 Argon 取它渲染左上角/登录页品牌字（"头牌名"）
-      WRT_NAME: BE10000
-      # WRT_SSID = 默认 WiFi 名称，以 BE10000 打头（与品牌字保持一致）
-      WRT_SSID: BE10000
+      # SBE1V1K 单机型原样（Argon 官方源/主题/插件/字体保持本次改动，其余不动）
+      WRT_NAME: SBE1V1K
+      # OWRT 是上游 router-tool 用来识别默认 AP 的字面量，改动会导致无线不初始化
+      WRT_SSID: OWRT
       WRT_WORD: 12345678
-      WRT_IP: 192.168.100.1
+      WRT_IP: 192.168.99.1
       WRT_PW: 无
       WRT_REPO: https://github.com/VIKINGYFY/immortalwrt.git
       WRT_BRANCH: owrt
