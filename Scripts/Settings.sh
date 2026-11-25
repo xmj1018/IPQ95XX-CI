@@ -28,8 +28,14 @@ sed -i "s/hostname='.*'/hostname='$WRT_NAME'/g" $CFG_FILE
 echo "CONFIG_PACKAGE_luci=y" >> ./.config
 echo "CONFIG_LUCI_LANG_zh_Hans=y" >> ./.config
 echo "CONFIG_PACKAGE_luci-theme-$WRT_THEME=y" >> ./.config
-echo "CONFIG_PACKAGE_luci-app-$WRT_THEME=y" >> ./.config
-echo "CONFIG_PACKAGE_luci-app-$WRT_THEME-config=y" >> ./.config
+# argon 3.2.0(作者官方源)已把 argon-config 集成进主题本体：
+# 只勾主题，不勾 luci-app-argon / luci-app-argon-config，
+# 否则旧独立插件会和主题抢同一批文件，APK 报 trying to overwrite 冲突。
+# 其它主题(vantage 等)保持原样，避免影响别的平台。
+if [ "$WRT_THEME" != "argon" ]; then
+	echo "CONFIG_PACKAGE_luci-app-$WRT_THEME=y" >> ./.config
+	echo "CONFIG_PACKAGE_luci-app-$WRT_THEME-config=y" >> ./.config
+fi
 
 #引入私有扩展配置
 if [ -f "$GITHUB_WORKSPACE/Config/PRIVATE.txt" ]; then

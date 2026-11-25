@@ -22,10 +22,8 @@ FIX() {
 	fi
 }
 
-#修改argon主题字体和颜色
-FIX "theme-argon" "$PACKAGE_PATH/luci-theme-argon" sed -i \
-	"s/primary '.*'/primary '#31a1a1'/g; s/'0.2'/'0.5'/g; s/'none'/'bing'/g; s/'600'/'normal'/g" \
-	"$PACKAGE_PATH/luci-theme-argon/luci-app-argon-config/root/etc/config/argon"
+# argon 主题改用作者官方源 3.2.0：已自带配色界面、无需再改旧版独立 config 文件。
+# 原 FIX 针对 sbwml 魔改版路径(luci-app-argon-config/root/etc/config/argon)，官方新版无此路径，已移除。
 
 #修改aurora菜单式样
 FIX "theme-aurora" "$PACKAGE_PATH/luci-app-aurora-config" find \

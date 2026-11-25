@@ -15,16 +15,14 @@ UPDATE_PACKAGE "luci-app-re-homeproxy" "1andrevich/homeproxy-hiddify" "master" "
 if [ -d "$GITHUB_WORKSPACE/user-files" ]; then
   mkdir -p ./files
   cp -af "$GITHUB_WORKSPACE/user-files/." ./files/
+  # argon 已改用作者官方源 3.2.0：旧的 argon rpcd/uci-defaults 覆盖文件已移除，
+  # 只保留字体(fonts/)覆盖——官方新版同样用 GoogleSans + TypoGraphica，
+  # 这里用小米万兆原版字体(含 woff 兼容格式)覆盖，确保字体外观和以前一致。
   chmod 755 \
     ./files/etc/uci-defaults/* \
     ./files/etc/init.d/* \
     ./files/usr/libexec/route-tool \
-    ./files/usr/libexec/route-tool.d/*.sh \
-    ./files/usr/libexec/rpcd/luci.argon \
-    ./files/usr/libexec/rpcd/luci.argon_appearance \
-    ./files/usr/libexec/rpcd/luci.argon_branding \
-    ./files/usr/libexec/rpcd/luci.argon_update \
-    ./files/usr/libexec/rpcd/luci.argon_wallpaper 2>/dev/null || :
+    ./files/usr/libexec/route-tool.d/*.sh 2>/dev/null || :
   chmod 644 ./files/usr/lib/lua/luci/controller/route_tool.lua 2>/dev/null || :
   echo "MiBE10000 user-files overlaid: $(find ./files -type f | wc -l) files"
 else

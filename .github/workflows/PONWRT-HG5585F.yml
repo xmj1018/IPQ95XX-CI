@@ -41,13 +41,29 @@ jobs:
           git clone --depth=1 --single-branch --branch master https://github.com/pbs05/ponwrt.git wrt
           echo "UPSTREAM_COMMIT=$(git -C wrt rev-parse --short HEAD)" >> "$GITHUB_ENV"
 
+      - name: Apply HG5585F NPU flow-offload patches
+        run: |
+          # ★NPU 硬件卸载修复（源自 wuziwei/ponwrt-ZN504-HG5585F，pbs05/ponwrt 的 fork）
+          # 已核实：该 fork 相对上游 173 个 airoha 补丁「一个没删、一个没改」，
+          # 仅在 patches-6.18/ 下新增这 8 个文件，因此可直接叠加到干净上游树，
+          # wuziwei 用「上游 + 这 8 个」正常产出 release，是本步骤可行性的实证。
+          # 作用：修 WAN IPv6 PPPoE 流卸载、bridge FDB 端口卸载、PPE SRAM 拥塞、
+          #       bridge fastpath 的 TTL/hop-limit 保留 —— 让流量更多走 NPU/PPE 硬件，
+          #       减少 CPU 软件转发，提升 NAT/桥接吞吐。
+          # 不带 Kconfig 改动，不需要新增 config 符号或固件文件。
+          cp -af ../patches/npu/*.patch wrt/target/linux/airoha/patches-6.18/
+          echo "=== 已叠加的 NPU 补丁 ==="
+          ls -1 wrt/target/linux/airoha/patches-6.18/ | grep -E '^(931|932|941|947|951)' || true
+          echo "=== airoha 补丁总数 ==="
+          ls -1 wrt/target/linux/airoha/patches-6.18/*.patch | wc -l
+
       - name: Update and install upstream feeds
         run: |
           cd wrt
           # ★关键：上游仓库只带 feeds.conf.default，没有 feeds.conf。
           #   若直接 `>> feeds.conf` 会新建一个只含额外 feed 的文件，
           #   导致 packages / luci / routing / pon_drivers / pon_userspace 全部缺失
-          #   （luci-base、argon、sqlite3-cli、v2ray-geoip 等统统找不到）。
+          #   （luci-base、luci-theme-argon、sqlite3-cli、v2ray-geoip 等统统找不到）。
           #   先还原上游默认 feed 清单，再全量安装，与上游 release.yml 一致。
           [ -f feeds.conf ] || cp feeds.conf.default feeds.conf
           echo "=== 生效的 feeds.conf ==="
@@ -69,15 +85,16 @@ jobs:
           # 会和默认 feed 重名互相覆盖，带来不可控风险
           ./scripts/feeds install honk luci-app-honk
           ./scripts/feeds install luci-app-store luci-app-istorex luci-app-quickstart quickstart taskd luci-lib-taskd luci-lib-xterm
-          # ★Argon 强制最新版：官方 luci feed 是旧版 3.1.4(20261113)，
-          #   kenzok8 feed 是最新 3.2.0(20261124)，且 argon-config 已集成进主题、
-          #   中文翻译内置。先删掉 install -a 拉进来的官方旧软链，再用 -p 优先装 kenzok8，
-          #   避免两个 feed 同名包互相冲突。
+          # ★Argon 主题：直接 clone 作者官方仓库（jerrykuku）master，编最新版 3.2.0。
+          #   按作者 DEVELOPMENT.md 的官方做法，不用任何第三方 feed 的旧版/魔改版。
+          #   先删 install -a 拉进来的软链，避免同名包冲突。
           rm -f package/feeds/luci/luci-theme-argon
-          ./scripts/feeds install -p kenzok8 luci-theme-argon luci-app-argon-config
-          echo "=== Argon 版本确认（主题必须 3.2.0）==="
-          grep -hE '^PKG_VERSION|^PKG_RELEASE|^LUCI_BASENAME' package/feeds/kenzok8/luci-theme-argon/Makefile || echo "MISSING kenzok8 argon"
-          ls -d package/feeds/kenzok8/luci-theme-argon package/feeds/kenzok8/luci-i18n-argon-config-zh-cn 2>/dev/null || true
+          rm -rf package/luci-theme-argon
+          git clone --depth 1 https://github.com/jerrykuku/luci-theme-argon.git package/luci-theme-argon
+          echo "=== Argon 官方版本确认（应为 3.2.0）==="
+          grep -E '^PKG_VERSION|^PKG_RELEASE|^LUCI_BASENAME' package/luci-theme-argon/Makefile
+          # 注意：3.2.0 已把 argon-config 集成进主题，不装独立 luci-app-argon-config，
+          # 否则 APK 会报 trying to overwrite ... owned by luci-theme-argon。
           # 分区扩容（sirpdboy）+ 磁盘管理器（sbwml）—— 用户指定，两者默认都在「系统」菜单
           ./scripts/feeds install luci-app-partexp luci-app-diskman
           # OpenClash：官方 luci feed 已随 install -a 就位，确认一下
@@ -86,17 +103,19 @@ jobs:
           for p in luci-app-partexp luci-app-diskman fdisk block-mount bc blkid parted btrfs-progs losetup resize2fs e2fsprogs f2fs-tools kmod-loop lsblk ucode smartmontools wipefs dosfstools exfat-fsck exfat-mkfs swap-utils xfs-mkfs kmod-fs-exfat kmod-fs-f2fs kmod-fs-vfat kmod-fs-xfs; do
             if ls -d package/feeds/*/"$p" >/dev/null 2>&1; then echo "OK      $p"; else echo "MISSING $p"; fi
           done
-          # ★主题默认值（BE10000 同款做法）：LuCI collections 依赖 luci-theme-bootstrap，
-          #   bootstrap 的 30_luci-theme-bootstrap 按字母序在 argon 的 30 脚本之后执行，
-          #   会把默认主题抢回 bootstrap。把 collections 里的 bootstrap 替换成 argon，
-          #   bootstrap 就不会被拉进固件，argon 成为唯一默认主题。
+          # ★主题默认值：LuCI collections 依赖 luci-theme-bootstrap，
+          #   bootstrap 的 30 脚本按字母序在 argon 之后执行，会把默认主题抢回 bootstrap。
+          #   把 collections 里的 bootstrap 换成 argon，bootstrap 不被拉进固件，
+          #   argon 成为唯一默认主题（作者主题的 30_luci-theme-argon 会设 mediaurlbase）。
           find feeds/luci/collections -type f -name Makefile \
             -exec sed -i 's/luci-theme-bootstrap/luci-theme-argon/g' {} +
           grep -rn "luci-theme" feeds/luci/collections/*/Makefile || true
           echo "=== 关键包是否就位 ==="
-          for p in luci-base luci-theme-argon luci-app-argon-config sqlite3-cli v2ray-geoip v2ray-geosite kmod-sched-bpf kmod-crypto-hw-eip93 honk luci-app-honk luci-app-store luci-app-istorex luci-app-quickstart luci-i18n-quickstart-zh-cn luci-i18n-argon-config-zh-cn quickstart taskd xz-utils tar; do
+          for p in luci-base sqlite3-cli v2ray-geoip v2ray-geosite kmod-sched-bpf kmod-crypto-hw-eip93 honk luci-app-honk luci-app-store luci-app-istorex luci-app-quickstart luci-i18n-quickstart-zh-cn quickstart taskd xz-utils tar; do
             if ls -d package/feeds/*/"$p" >/dev/null 2>&1; then echo "OK      $p"; else echo "MISSING $p"; fi
           done
+          # argon 是 clone 到 package/ 根下的官方仓库，单独确认
+          [ -f package/luci-theme-argon/Makefile ] && echo "OK      luci-theme-argon (官方 clone $(grep -m1 '^PKG_VERSION' package/luci-theme-argon/Makefile))" || echo "MISSING luci-theme-argon"
 
       - name: Cache downloads
         uses: actions/cache@v4
@@ -106,7 +125,7 @@ jobs:
           restore-keys: |
             ponwrt-hg5585f-dl-
 
-      - name: Overlay custom files (hostname + argon theme/fonts)
+      - name: Overlay custom files (hostname + apk repos + honk)
         run: |
           mkdir -p wrt/files
           cp -af pon-files/. wrt/files/
@@ -164,7 +183,7 @@ jobs:
           echo "=== 关键配置确认 ==="
           grep -E "DEVICE_fiberhome_hg5585f-ct=|DEBUG_INFO_BTF|PACKAGE_honk=|luci-app-honk=|luci-theme-argon=|crypto-hw-eip93=" .config || true
           echo "=== 增量包是否全部生效（被丢弃的会显示 MISSING）==="
-          for p in honk luci-app-honk luci-app-store luci-app-istorex luci-app-quickstart luci-i18n-quickstart-zh-cn luci-i18n-argon-config-zh-cn quickstart taskd luci-lib-taskd luci-lib-xterm xz-utils tar libuci-lua mount-utils luci-theme-argon luci-app-argon-config kmod-crypto-hw-eip93 zram-swap kmod-zram v2ray-geoip v2ray-geosite kmod-sched-bpf kmod-nft-queue; do
+          for p in honk luci-app-honk luci-app-store luci-app-istorex luci-app-quickstart luci-i18n-quickstart-zh-cn luci-i18n-argon-config-zh-cn quickstart taskd luci-lib-taskd luci-lib-xterm xz-utils tar libuci-lua mount-utils luci-theme-argon kmod-crypto-hw-eip93 zram-swap kmod-zram v2ray-geoip v2ray-geosite kmod-sched-bpf kmod-nft-queue; do
             if grep -q "^CONFIG_PACKAGE_${p}=y" .config; then echo "OK   ${p}"; else echo "MISSING ${p}"; fi
           done
 
@@ -263,5 +282,5 @@ jobs:
           gh release create "$TAG" out/* \
             --repo "${{ github.repository }}" \
             --title "PonWrt HG5585F-CT $TAG" \
-            --notes "上游 pbs05/ponwrt@${{ env.UPSTREAM_COMMIT }} 原样编译；新增 honk(BTF)、EIP93 AES 加速、argon/iStoreOS 风格（iStore 商店 + istorex + QuickStart 首页 + 中文）、OpenClash、分区扩容、磁盘管理；主机名 HG5585F" \
+            --notes "上游 pbs05/ponwrt@${{ env.UPSTREAM_COMMIT }} 原样编译；新增 honk(BTF)、EIP93 AES 加速、argon 主题（作者官方源 3.2.0，自带在线更新）+ iStoreOS 风格（iStore 商店 + istorex + QuickStart 首页 + 中文）、OpenClash、分区扩容、磁盘管理；主机名 HG5585F" \
             --prerelease
