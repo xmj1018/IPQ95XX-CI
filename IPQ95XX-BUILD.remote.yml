@@ -1,4 +1,18 @@
 # SBE1V1K 新固件编译入口（2026-11-23 从零编写，不继承任何旧配置）
+#
+# Argon 主题：全套官方，与 PONWRT-HG5585F / IPQ95XX-BUILD(BE10000) 完全一致
+#   1) 官方源：Scripts/Packages.sh 用 UPDATE_PACKAGE 拉 jerrykuku/luci-theme-argon 的 master
+#   2) 官方主题包：master 即 3.2.0，自带在线更新器；不用任何第三方 feed 的魔改版
+#   3) 官方插件：3.2.0 已把 argon-config 集成进主题本体，只勾 luci-theme-argon，
+#      不勾独立 luci-app-argon-config（避免 APK 文件冲突）；默认主题由 Settings.sh 换为 argon
+#   4) 官方字体：不做任何 fonts/ 覆盖，直接用主题自带的
+#      GoogleSans-Regular.woff2 + TypoGraphica.woff2（base.css 的 @font-face 引用）
+#   5) 315 固件旧字体已存档到 _archive/315-argon-fonts/，该目录不参与编译、不会进固件；
+#      后期如需回退，拷回 user-files/www/luci-static/argon/fonts/ 即可
+#
+# 注意：本文件位于仓库根目录，是 SBE1V1K 的入口配置备份；正式 workflow 在 .github/workflows/。
+#       真正编译前需同步过去，并在 Config/PRIVATE.txt 里把
+#       DEVICE_askey_sbe1v1k 设为 y、DEVICE_xiaomi_be10000 设为 n。
 
 name: IPQ95XX-BUILD
 

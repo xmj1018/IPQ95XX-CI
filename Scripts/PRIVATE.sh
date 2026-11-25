@@ -21,11 +21,17 @@ if [ -d "$GITHUB_WORKSPACE/user-files" ]; then
   #     不再用小米原版字体(以及旧版残留的 argon.woff 图标字体)覆盖主题；
   #   - 官方主题 fonts/ 只含 GoogleSans-Regular.woff2 + TypoGraphica.woff2，
   #     base.css 的 @font-face 直接引用这两个文件，编译后即为官方字体。
-  ARGON_FONTS="./package/luci-theme-argon/htdocs/luci-static/argon/fonts"
+  ARGON_PKG="./package/luci-theme-argon"
+  ARGON_FONTS="$ARGON_PKG/htdocs/luci-static/argon/fonts"
+  if [ -f "$ARGON_PKG/Makefile" ]; then
+    echo "Argon official source: jerrykuku/luci-theme-argon master, $(grep -m1 '^PKG_VERSION' "$ARGON_PKG/Makefile")"
+  else
+    echo "WARN: Argon official package not found (check Packages.sh clone)"
+  fi
   if [ -d "$ARGON_FONTS" ]; then
     echo "Argon official fonts: $(ls -1 "$ARGON_FONTS" | tr '\n' ' ')"
   else
-    echo "WARN: Argon official fonts dir not found (check Packages.sh clone)"
+    echo "WARN: Argon official fonts dir not found"
   fi
   chmod 755 \
     ./files/etc/uci-defaults/* \
