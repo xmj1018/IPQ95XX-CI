@@ -44,8 +44,14 @@ jobs:
           make defconfig > /dev/null 2>&1 || true
           echo "===== BEFORE: tmp/.config-package.in matches ====="
           grep -n -E "config PACKAGE_luci-app-(store|istorex|quickstart)|depends on.*luci-app-store|select PACKAGE_luci-app-store" tmp/.config-package.in | head -60 || echo "(no match)"
+          echo "===== BEFORE: store Kconfig context ====="
+          grep -n -A 14 -B 3 "config PACKAGE_luci-app-store" tmp/.config-package.in | head -40 || echo "(no match)"
+          echo "===== BEFORE: quickstart Kconfig context ====="
+          grep -n -A 14 -B 3 "config PACKAGE_luci-app-quickstart" tmp/.config-package.in | head -40 || echo "(no match)"
           echo "===== BEFORE: .config matches ====="
           grep -n -E "CONFIG_PACKAGE_luci-app-(store|istorex|quickstart)" .config || echo "(no symbol)"
+          echo "===== BEFORE: .config luci-app sample ====="
+          grep -n "CONFIG_PACKAGE_luci-app" .config | head -30 || echo "(none)"
           echo "===== BEFORE: store Makefile ====="
           cat package/feeds/kenzok8/luci-app-store/Makefile
 
