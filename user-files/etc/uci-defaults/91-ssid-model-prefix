@@ -1,15 +1,15 @@
 #!/bin/sh
-if ! uci -q get router-tool.defaults.ssid >/dev/null 2>&1; then
-	if ! uci -q get router-tool.defaults >/dev/null 2>&1; then
-		uci add router-tool defaults >/dev/null 2>&1
-		uci rename router-tool.@defaults[-1]=defaults >/dev/null 2>&1
-	fi
+# 无线名的唯一来源是编译入口的 WRT_SSID：
+#   Scripts/Settings.sh 在编译期把它写进 /etc/config/router-tool 的 defaults.ssid
+#   （上游该文件默认为空字符串），mac80211.uc 的 default_ssid() 再自动拼频段后缀。
+# 本脚本只保证 defaults 段与 ssid/key 非空，不再按机型硬写名称，
+# 因此 SBE1V1K 与小米万兆 BE10000 可以共用同一份 user-files。
+
+if ! uci -q get router-tool.defaults >/dev/null 2>&1; then
+	uci add router-tool defaults >/dev/null 2>&1
+	uci rename router-tool.@defaults[-1]=defaults >/dev/null 2>&1
 fi
 
-# 无线名前缀统一跟随品牌字(WRT_NAME / hostname)。
-# 编译期 Scripts/Settings.sh 已把 WRT_SSID 写进 router-tool.defaults.ssid，
-# 这里只在为空时按 hostname 兜底，避免把共用 user-files 的其它机型
-# （例如小米万兆 BE10000）覆盖成写死的型号名。
 if [ -z "$(uci -q get router-tool.defaults.ssid 2>/dev/null)" ]; then
 	BRAND="$(uci -q get system.@system[0].hostname 2>/dev/null)"
 	[ -n "$BRAND" ] || BRAND=OWRT

@@ -1,0 +1,32 @@
+name: BE10000-BUILD
+
+on:
+  workflow_dispatch:
+
+permissions: write-all
+
+jobs:
+  config:
+    name: IPQ95XX-BE10000
+    uses: ./.github/workflows/WRT-CORE.yml
+    with:
+      WRT_CONFIG: IPQ95XX
+      WRT_THEME: argon
+      # 机型参数：左上角名牌(WRT_NAME) 与无线名前缀(WRT_SSID) 必须一致。
+      # 改无线名只有这一处：Scripts/Settings.sh 把 WRT_SSID 写进
+      # /etc/config/router-tool 的 defaults.ssid，上游 default_ssid() 自动追加
+      # -2.4G / -5.2G / -5.8G / -6G 后缀；user-files 不按机型硬写名称。
+      WRT_NAME: BE10000
+      WRT_SSID: BE10000
+      WRT_WORD: 12345678
+      WRT_IP: 192.168.100.1
+      WRT_PW: 无
+      WRT_REPO: https://github.com/VIKINGYFY/immortalwrt.git
+      WRT_BRANCH: owrt
+      WRT_SOURCE: VIKINGYFY/immortalwrt
+      WRT_TAG: BE10000
+      # 设备选择后置覆盖 Config/PRIVATE.txt；两个 IPQ95XX 机型共用同一份配置
+      WRT_PACKAGE: |
+        CONFIG_TARGET_DEVICE_qualcommbe_ipq95xx_DEVICE_xiaomi_be10000=y
+        CONFIG_TARGET_DEVICE_qualcommbe_ipq95xx_DEVICE_askey_sbe1v1k=n
+      WRT_TEST: false

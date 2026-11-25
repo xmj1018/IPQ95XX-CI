@@ -11,8 +11,8 @@
 #      后期如需回退，拷回 user-files/www/luci-static/argon/fonts/ 即可
 #
 # 注意：本文件位于仓库根目录，是 SBE1V1K 的入口配置备份；正式 workflow 在 .github/workflows/。
-#       真正编译前需同步过去，并在 Config/PRIVATE.txt 里把
-#       DEVICE_askey_sbe1v1k 设为 y、DEVICE_xiaomi_be10000 设为 n。
+#       两个 IPQ95XX 机型共用 Config/user-files/Scripts/WRT-CORE，只有名牌、无线名前缀、
+#       后台 IP、设备选择不同；设备选择由入口的 WRT_PACKAGE 后置覆盖，无需改 PRIVATE.txt。
 
 name: IPQ95XX-BUILD
 
@@ -23,15 +23,16 @@ permissions: write-all
 
 jobs:
   config:
-    name: IPQ95XX
+    name: IPQ95XX-SBE1V1K
     uses: ./.github/workflows/WRT-CORE.yml
     with:
       WRT_CONFIG: IPQ95XX
       WRT_THEME: argon
-      # hostname = 左上角与登录页的品牌字（新版 Argon 模板直接取 hostname 渲染）
+      # 机型参数：左上角名牌(WRT_NAME) 与无线名前缀(WRT_SSID) 必须一致。
+      # 改无线名只有这一处：Scripts/Settings.sh 把 WRT_SSID 写进
+      # /etc/config/router-tool 的 defaults.ssid，上游 default_ssid() 自动追加
+      # -2.4G / -5.2G / -5.8G / -6G 后缀；user-files 不按机型硬写名称。
       WRT_NAME: SBE1V1K
-      # 无线名前缀与名牌(WRT_NAME)保持一致；上游 mac80211.uc 的 default_ssid()
-      # 自动拼 -2.4G / -5.2G / -5.8G / -6G 频段后缀
       WRT_SSID: SBE1V1K
       WRT_WORD: 12345678
       WRT_IP: 192.168.99.1
@@ -39,5 +40,9 @@ jobs:
       WRT_REPO: https://github.com/VIKINGYFY/immortalwrt.git
       WRT_BRANCH: owrt
       WRT_SOURCE: VIKINGYFY/immortalwrt
-      WRT_PACKAGE: ''
+      WRT_TAG: SBE1V1K
+      # 设备选择后置覆盖 Config/PRIVATE.txt；两个 IPQ95XX 机型共用同一份配置
+      WRT_PACKAGE: |
+        CONFIG_TARGET_DEVICE_qualcommbe_ipq95xx_DEVICE_askey_sbe1v1k=y
+        CONFIG_TARGET_DEVICE_qualcommbe_ipq95xx_DEVICE_xiaomi_be10000=n
       WRT_TEST: false

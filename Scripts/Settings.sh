@@ -11,12 +11,12 @@ find ./feeds/luci/modules/luci-mod-system/ -type f -name "flash.js" -exec sed -i
 #添加编译日期标识
 find ./feeds/luci/modules/luci-mod-status/ -type f -name "10_system.js" -exec sed -i "s/(\(luciversion || ''\))/(\1) + (' \/ $WRT_MARK-$WRT_DATE')/g" {} +
 
-#修改默认WIFI账号密码
-WIFI_UC="./package/network/config/wifi-scripts/files/lib/wifi/mac80211.uc"
+#修改默认 WIFI 名称/密码：唯一写入点是 router-tool 的 defaults 段。
+#上游 /etc/config/router-tool 默认 option ssid ''（空），WRT_SSID 由编译入口传入；
+#mac80211.uc 的 default_ssid() 读它作前缀，自动追加 -2.4G / -5.2G / -5.8G / -6G。
+#mac80211.uc 本身没有 ssid '...' 写法，旧脚本对它做 sed 实际命中不到，已移除。
 ROUTER_TOOL="./package/emortal/luci-app-router-tool/root/etc/config/router-tool"
-for file in "$ROUTER_TOOL" "$WIFI_UC"; do
-	[ -f "$file" ] && sed -i "s/ssid '.*'/ssid '$WRT_SSID'/g; s/key '.*'/key '$WRT_WORD'/g" "$file"
-done
+[ -f "$ROUTER_TOOL" ] && sed -i "s/ssid '.*'/ssid '$WRT_SSID'/g; s/key '.*'/key '$WRT_WORD'/g" "$ROUTER_TOOL"
 
 CFG_FILE="./package/base-files/files/bin/config_generate"
 #修改默认IP地址

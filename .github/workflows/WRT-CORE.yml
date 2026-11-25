@@ -40,6 +40,10 @@ on:
       WRT_PACKAGE:
         required: false
         type: string
+      WRT_TAG:
+        required: false
+        type: string
+        default: ''
       WRT_TEST:
         required: false
         default: false
@@ -58,6 +62,7 @@ env:
   WRT_BRANCH: ${{inputs.WRT_BRANCH}}
   WRT_SOURCE: ${{inputs.WRT_SOURCE}}
   WRT_PACKAGE: ${{inputs.WRT_PACKAGE}}
+  WRT_TAG: ${{inputs.WRT_TAG}}
   WRT_TEST: ${{inputs.WRT_TEST}}
 
 jobs:
@@ -284,7 +289,7 @@ jobs:
       - name: Release Firmware
         uses: softprops/action-gh-release@master
         with:
-          tag_name: ${{env.WRT_CONFIG}}-${{env.WRT_INFO}}-${{env.WRT_BRANCH}}-${{env.WRT_DATE}}
+          tag_name: ${{env.WRT_CONFIG}}-${{env.WRT_INFO}}-${{env.WRT_BRANCH}}-${{env.WRT_DATE}}${{inputs.WRT_TAG && format('-{0}', inputs.WRT_TAG) || ''}}
           files: ./wrt/upload/*.*
           body: |
             这是个平台固件包，内含多个设备！
