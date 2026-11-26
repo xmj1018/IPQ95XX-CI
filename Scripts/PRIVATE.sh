@@ -100,9 +100,16 @@ ARGON_WHITE_TEXT_EOF
   chmod 755 \
     ./files/etc/uci-defaults/* \
     ./files/etc/init.d/* \
+    ./files/usr/sbin/fanctl \
+    ./files/usr/sbin/ledctl \
     ./files/usr/libexec/route-tool \
     ./files/usr/libexec/route-tool.d/*.sh 2>/dev/null || :
   chmod 644 ./files/usr/lib/lua/luci/controller/route_tool.lua 2>/dev/null || :
+  # SBE1V1K 风扇/RGB 守护：git core.filemode=false，checkout 后是 644，
+  # init.d 用 `command /usr/sbin/fanctl|ledctl` 直接执行，必须在这里补 +x，
+  # 否则固件里守护起不来（表现为「没驱动/不能用」）。两机型共用 user-files，
+  # 万兆机型开机由 99-hwctrl-enable 删除这几套，不受影响。
+  ls -l ./files/usr/sbin/fanctl ./files/usr/sbin/ledctl 2>/dev/null || :
   echo "SBE1V1K user-files overlaid: $(find ./files -type f | wc -l) files"
 else
   echo "WARN: user-files not found, skip overlay"
