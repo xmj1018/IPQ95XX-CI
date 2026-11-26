@@ -110,7 +110,7 @@ jobs:
           }
 
           # 官方原名 + 高于固件自带 2.0.5-r20260318 的版本 => 升级覆盖，不冲突
-          mkpkg "$BASE/app"   "luci-app-partexp"        "2.0.5-r20261126b" "LuCI Support for Automatic Partition Mount (official main source)"
+          mkpkg "$BASE/app"   "luci-app-partexp"        "2.0.5-r20261127" "LuCI Support for Automatic Partition Mount (official main source)"
           mkpkg "$BASE/i18n"  "luci-i18n-partexp-zh-cn" "26.302.64833-r2"  "Translation for luci-app-partexp - 简体中文 (official lmo)"
 
           # 独立增强包
