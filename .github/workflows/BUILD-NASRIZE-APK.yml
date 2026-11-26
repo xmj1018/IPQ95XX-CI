@@ -48,12 +48,21 @@ jobs:
           cp -a "$SRC/etc"          "$DATA/etc"
           cp -a "$SRC/usr"          "$DATA/usr"
           cp -a "$SRC/www"          "$DATA/www"
+          # 多路径兼容：不同机型 LuCI 的 /luci-static 实际根目录可能是
+          # /www/luci-static（标准）或 /usr/share/luci-static（新版 apk 固件）。
+          # view 文件在安装包里同时布到两处，装后还有自愈脚本再兜底。
+          VIEW="$DATA/www/luci-static/resources/view/nasresize/index.js"
+          mkdir -p "$DATA/usr/share/luci-static/resources/view/nasresize"
+          cp -f "$VIEW" "$DATA/usr/share/luci-static/resources/view/nasresize/index.js"
+          # 同时提供单文件视图 nasresize.js（部分 LuCI 版本按此名加载）
+          cp -f "$VIEW" "$DATA/www/luci-static/resources/view/nasresize.js"
+          cp -f "$VIEW" "$DATA/usr/share/luci-static/resources/view/nasresize.js"
           chown -R 0:0 "$DATA" "$SCRIPTS"
 
           # conffiles: 配置文件升级时保留用户修改
           mkdir -p "$DATA/lib/apk/packages"
           printf '%s\n' '/etc/config/nasresize' > "$DATA/lib/apk/packages/luci-app-nasresize.conffiles"
-          ( cd "$DATA" && find . -type f -o -type l | sed 's|^\./|/|' | sort > "lib/apk/packages/luci-app-nasresize.list" )
+          ( cd "$DATA" && find . \( -type f -o -type l \) | sed 's|^\./|/|' | sort > "lib/apk/packages/luci-app-nasresize.list" )
 
           # 生命周期脚本 (apk 命名规范)
           cat > "$SCRIPTS/post-install" <<'EOF'
@@ -61,9 +70,20 @@ jobs:
           chmod 755 /usr/sbin/nasresize 2>/dev/null || true
           chmod 755 /etc/uci-defaults/99-nasresize 2>/dev/null || true
           mkdir -p /var/log /var/lock /mnt 2>/dev/null || true
+          # 自愈：探测 LuCI 静态根，把 view 同步到实际读取目录 + 单文件名
+          SRC=/www/luci-static/resources/view/nasresize/index.js
+          if [ -f "$SRC" ]; then
+            for R in /www/luci-static /usr/share/luci-static /usr/lib/luci-static; do
+              [ -d "$R/resources" ] || continue
+              mkdir -p "$R/resources/view/nasresize" 2>/dev/null || true
+              cp -f "$SRC" "$R/resources/view/nasresize/index.js" 2>/dev/null || true
+              cp -f "$SRC" "$R/resources/view/nasresize.js" 2>/dev/null || true
+            done
+          fi
           rm -f /tmp/luci-indexcache* 2>/dev/null || true
           rm -rf /tmp/luci-modulecache 2>/dev/null || true
           killall -HUP rpcd 2>/dev/null || true
+          /etc/init.d/rpcd restart >/dev/null 2>&1 || true
           exit 0
           EOF
           cp "$SCRIPTS/post-install" "$SCRIPTS/post-upgrade"
@@ -129,6 +149,9 @@ jobs:
             /tmp/apkroot/usr/share/luci/menu.d/luci-app-nasresize.json \
             /tmp/apkroot/usr/share/rpcd/acl.d/luci-app-nasresize.json \
             /tmp/apkroot/www/luci-static/resources/view/nasresize/index.js \
+            /tmp/apkroot/www/luci-static/resources/view/nasresize.js \
+            /tmp/apkroot/usr/share/luci-static/resources/view/nasresize/index.js \
+            /tmp/apkroot/usr/share/luci-static/resources/view/nasresize.js \
             /tmp/apkroot/etc/config/nasresize \
             /tmp/apkroot/etc/uci-defaults/99-nasresize; do
             if [ -f "$f" ]; then echo "OK   $f"; else echo "MISS $f"; exit 1; fi
