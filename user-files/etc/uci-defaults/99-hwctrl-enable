@@ -1,9 +1,9 @@
 #!/bin/sh
-# SBE1V1K 风扇与 RGB 状态灯开机初始化。
+# 风扇与 RGB 状态灯开机初始化。
 # user-files 为两个 IPQ95XX 机型共用，这里按 board_name 分流，保证两套互不混淆：
-#  - SBE1V1K：启用守护（init 内还有 board_ok + 硬件节点双重守卫）
-#  - 其它机型(如 BE10000)：移除 sbe1v1k 专属菜单/ACL/页面，万兆固件里
-#    不会出现不属于它的"风扇控制/RGB 状态灯"菜单（万兆用上游 xiaomi-control）
+#  - SBE1V1K：启用 fanctl/ledctl 守护（旧固件 luci-app-fan/luci-app-led 那套）
+#  - 其它机型(如 BE10000)：移除风扇/RGB 菜单/ACL/页面，万兆固件里
+#    不会出现不属于它的"风扇控制/LED 控制"菜单（万兆用上游 xiaomi-control）
 BOARD="$(cat /tmp/sysinfo/board_name 2>/dev/null)"
 case "$BOARD" in
     askey,sbe1v1k|sbe1v1k)
@@ -12,10 +12,14 @@ case "$BOARD" in
         done
         ;;
     *)
-        rm -f /usr/share/luci/menu.d/luci-app-sbe1v1k.json \
-              /usr/share/rpcd/acl.d/luci-app-sbe1v1k.json \
-              /www/luci-static/resources/view/sbe1v1k/fan.js \
-              /www/luci-static/resources/view/sbe1v1k/led.js 2>/dev/null || :
+        rm -f /usr/share/luci/menu.d/luci-app-fan.json \
+              /usr/share/luci/menu.d/luci-app-led.json \
+              /usr/share/rpcd/acl.d/luci-app-fan.json \
+              /usr/share/rpcd/acl.d/luci-app-led.json \
+              /www/luci-static/resources/view/system/fan.js \
+              /www/luci-static/resources/view/system/led.js \
+              /etc/init.d/fanctl /etc/init.d/ledctl \
+              /usr/sbin/fanctl /usr/sbin/ledctl 2>/dev/null || :
         ;;
 esac
 rm -f /tmp/luci-indexcache* /tmp/luci-modulecache/* 2>/dev/null || :
