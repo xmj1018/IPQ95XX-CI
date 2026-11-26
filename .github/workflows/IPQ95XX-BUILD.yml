@@ -25,8 +25,15 @@ jobs:
       WRT_BRANCH: owrt
       WRT_SOURCE: VIKINGYFY/immortalwrt
       WRT_TAG: SBE1V1K
-      # 设备选择后置覆盖 Config/PRIVATE.txt；两个 IPQ95XX 机型共用同一份配置
+      # 设备选择 + 风扇/RGB 后端后置覆盖 Config/PRIVATE.txt（PRIVATE 之后追加，后者生效）。
+      # SBE1V1K 用 pwm-fan + 三色 PWM LED，配套 user-files 里的 sbe1v1k 专属菜单/守护；
+      # 关掉万兆的 emc2305 + xiaomi-control，避免把万兆那套装进本机型。
       WRT_PACKAGE: |
         CONFIG_TARGET_DEVICE_qualcommbe_ipq95xx_DEVICE_askey_sbe1v1k=y
         CONFIG_TARGET_DEVICE_qualcommbe_ipq95xx_DEVICE_xiaomi_be10000=n
+        CONFIG_PACKAGE_kmod-hwmon-pwmfan=y
+        CONFIG_PACKAGE_kmod-hwmon-emc2305=n
+        CONFIG_PACKAGE_luci-app-xiaomi-control=n
+        CONFIG_PACKAGE_luci-i18n-xiaomi-control-zh-cn=n
+        CONFIG_PACKAGE_kmod-leds-pwm=y
       WRT_TEST: false
