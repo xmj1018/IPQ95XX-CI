@@ -14,18 +14,24 @@ jobs:
   apk-v3:
     runs-on: ubuntu-latest
     container:
-      image: alpine:3.21
+      image: alpine:edge
     steps:
+      # alpine:edge 自带 apk-tools 3.x (3.21 稳定版是 2.14, 其 mkpkg
+      # 不支持 --info/--files 新语法)。强制确认装的是 3.x。
       - name: Install tools
-        run: apk add --no-cache git bash tar gzip
+        run: |
+          apk add --no-cache --upgrade apk-tools git bash tar gzip
+          apk --version
 
       - uses: actions/checkout@v4
 
-      - name: Verify apk mkpkg available
+      - name: Verify apk mkpkg >= 3.x
         run: |
-          apk --version
-          apk mkpkg --help >/dev/null 2>&1 || true
-          echo "apk tools ready"
+          VER=$(apk --version | awk '{print $2}')
+          MAJOR=${VER%%.*}
+          echo "apk-tools major=$MAJOR"
+          [ "$MAJOR" -ge 3 ] || { echo "need apk-tools 3.x for mkpkg --info"; exit 1; }
+          echo "apk tools 3.x ready"
 
       - name: Stage package data tree
         run: |
