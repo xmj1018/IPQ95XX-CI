@@ -1,13 +1,18 @@
 # SPDX-License-Identifier: MIT
 # Copyright (C) 2026 VIKINGYFY
 
+# 固件保留策略（2026-11-26 修订）：
+# - 关闭定时自动清理：固件 release 默认一直保留，不再被无故删光。
+# - 仅手动触发清理；即使手动运行，也保留最近 20 个 release / 30 天运行记录。
+# - 只有觉得固件编多了、想清旧的时，才手动运行本工作流。
+
 name: Auto-Clean
 
 on:
-  #自动清理：每天早上5点
-  schedule:
-    - cron: 21 21 * * *
-  #手动清理
+  # 定时自动清理已关闭（原 cron: 21 21 * * * 会把全部 release/run 删光）
+  # schedule:
+  #   - cron: 21 21 * * *
+  # 手动清理（保留最近 20 个 release / 30 天运行记录）
   workflow_dispatch:
 
 permissions: write-all
@@ -16,12 +21,14 @@ jobs:
   auto_clean:
     runs-on: ubuntu-latest
     steps:
-      - name: Delete old Releases and Workflows
+      - name: Delete old Releases and Workflows (keep latest)
         uses: ophub/delete-releases-workflows@main
         with:
           gh_token: ${{secrets.GITHUB_TOKEN}}
           delete_releases: true
-          releases_keep_latest: 0
+          # 保留最近 20 个 release（SBE1V1K/BE10000/HG5585F 多批次），只清更旧的
+          releases_keep_latest: 20
           delete_tags: true
           delete_workflows: true
-          workflows_keep_day: 0
+          # 保留最近 30 天的 workflow 运行记录
+          workflows_keep_day: 30
