@@ -1,9 +1,10 @@
-name: Build 分区扩容 APK (中文魔改 partexp 原位)
+name: Build 分区扩容 官方原版 APK (插件包 + 中文包)
 
-# 直接生成 luci-app-partexp 的中文替换：菜单 admin/system/partexp(order 54,
-# 名字"分区扩容"原样)，view 直接用我们的中文界面文件铺到 partexp 目标路径，
-# 安装即覆盖原版英文界面 —— 不依赖 post-install 覆盖(此前 --no-scripts 掩盖了 bug)。
-# 独立包名 luci-app-partexp-cn，避免与固件原版包同名冲突；标准 APK v3。
+# 照搬 sirpdboy/luci-app-partexp 官方 v2.0.5 的两个原版包：
+#   1) luci-app-partexp        —— 插件本体（view/rpcd 后端/ACL/menu，原样不改）
+#   2) luci-i18n-partexp-zh-cn —— 独立中文包（partexp.zh-cn.lmo，原样不改）
+# 关键：用【官方原名 + 更高版本】做升级替换，避免与固件自带同名包冲突被拒绝；
+#       绝不魔改 view/ACL（此前自定义 view + 独立包名导致 apk 拒绝安装 + load error）。
 
 on:
   workflow_dispatch:
@@ -19,7 +20,7 @@ jobs:
     steps:
       - name: Install tools
         run: |
-          apk add --no-cache --upgrade apk-tools git bash tar gzip curl
+          apk add --no-cache --upgrade apk-tools bash tar gzip curl
           apk --version
 
       - uses: actions/checkout@v4
@@ -31,146 +32,110 @@ jobs:
           [ "$MAJOR" -ge 3 ] || { echo "need apk-tools 3.x"; exit 1; }
           echo "apk 3.x ready"
 
-      - name: Stage full partexp replacement (Chinese view baked in)
+      - name: Stage & build both official APKs
         run: |
           set -eu
-          STAGE="$GITHUB_WORKSPACE/.apkstage"
-          DATA="$STAGE/data"
-          SCRIPTS="$STAGE/scripts"
-          SRC="$GITHUB_WORKSPACE/tools/nasresize-apk/src"
-          P="$SRC/usr/share/nasresize/payload"
-          rm -rf "$STAGE"; mkdir -p "$DATA" "$SCRIPTS"
+          WS="$GITHUB_WORKSPACE"
+          OUT="$WS/dist"; mkdir -p "$OUT"
+          BASE="$WS/tools/partexp-official"
 
-          # 1) 菜单：原位 admin/system/partexp, order 54, 名字"分区扩容"（不动位置/名字）
-          mkdir -p "$DATA/usr/share/luci/menu.d"
-          cp "$P/luci-app-partexp.json" "$DATA/usr/share/luci/menu.d/luci-app-partexp.json"
+          mkpkg() {
+            # $1=stage_dir  $2=name  $3=version  $4=desc
+            SD="$1"; NAME="$2"; VER="$3"; DESC="$4"
+            ST="$WS/.stage-$NAME"; rm -rf "$ST"; mkdir -p "$ST/data" "$ST/scripts"
+            cp -af "$SD"/. "$ST/data/"
+            chown -R 0:0 "$ST"
+            # 官方原包无脚本；留空 post 脚本仅清 LuCI 缓存（升级后需重载）
+            cat > "$ST/scripts/post-install" <<'EOF'
+            #!/bin/sh
+            rm -f /tmp/luci-indexcache* 2>/dev/null || true
+            rm -rf /tmp/luci-modulecache 2>/dev/null || true
+            killall -HUP rpcd 2>/dev/null || true
+            /etc/init.d/rpcd restart >/dev/null 2>&1 || true
+            /etc/init.d/uhttpd restart >/dev/null 2>&1 || true
+            exit 0
+            EOF
+            chmod 755 "$ST/scripts/post-install"
+            apk mkpkg --xattrs=no \
+              --info "name:$NAME" \
+              --info "version:$VER" \
+              --info "description:$DESC" \
+              --info "arch:noarch" \
+              --info "license:Apache-2.0" \
+              --info "origin:partexp-official" \
+              --info "maintainer:sirpdboy" \
+              --script "post-install:$ST/scripts/post-install" \
+              --script "post-upgrade:$ST/scripts/post-install" \
+              --files "$ST/data" \
+              --output "$OUT/${NAME}-${VER}.apk"
+            echo "built $OUT/${NAME}-${VER}.apk"
+          }
 
-          # 2) ACL：luci-app-partexp（含 file.exec，授权后端调用）
-          mkdir -p "$DATA/usr/share/rpcd/acl.d"
-          cp "$P/luci-app-partexp.acl.json" "$DATA/usr/share/rpcd/acl.d/luci-app-partexp.json"
+          # 官方原名 + 更高版本 => apk 视为升级，不冲突
+          mkpkg "$BASE/app"   "luci-app-partexp"        "2.0.5-r20261126" "LuCI Support for Automatic Partition Mount (official v2.0.5, unmodified)"
+          mkpkg "$BASE/i18n"  "luci-i18n-partexp-zh-cn" "26.302.64833-r1"  "Translation for luci-app-partexp - 简体中文 (official lmo)"
 
-          # 3) 中文 view：直接铺到所有可能 luci-static 根的 partexp 路径，覆盖原版英文界面
-          for R in www/luci-static usr/share/luci-static usr/lib/luci-static; do
-            mkdir -p "$DATA/$R/resources/view/partexp"
-            cp "$P/partexp.view.js" "$DATA/$R/resources/view/partexp.js"
-            cp "$P/partexp.view.js" "$DATA/$R/resources/view/partexp/index.js"
-          done
-
-          # 4) 后端与配置
-          mkdir -p "$DATA/usr/sbin" "$DATA/etc/config" "$DATA/etc/uci-defaults"
-          cp "$SRC/usr/sbin/nasresize"            "$DATA/usr/sbin/nasresize"
-          cp "$SRC/etc/config/nasresize"          "$DATA/etc/config/nasresize"
-          cp "$SRC/etc/uci-defaults/99-nasresize" "$DATA/etc/uci-defaults/99-nasresize"
-          chown -R 0:0 "$DATA" "$SCRIPTS"
-
-          # conffiles / file list
-          mkdir -p "$DATA/lib/apk/packages"
-          printf '%s\n' '/etc/config/nasresize' > "$DATA/lib/apk/packages/luci-app-partexp-cn.conffiles"
-          ( cd "$DATA" && find . \( -type f -o -type l \) | sed 's|^\./|/|' | sort > "lib/apk/packages/luci-app-partexp-cn.list" )
-
-          # 生命周期脚本：权限 + 清残留旧 nasresize 菜单 + 重启服务（不负责覆盖 view）
-          cat > "$SCRIPTS/post-install" <<'SCRIPT'
-          #!/bin/sh
-          chmod 755 /usr/sbin/nasresize 2>/dev/null || true
-          chmod 755 /etc/uci-defaults/99-nasresize 2>/dev/null || true
-          mkdir -p /var/log /var/lock /mnt 2>/dev/null || true
-          rm -f /usr/share/luci/menu.d/luci-app-nasresize.json 2>/dev/null || true
-          for R in /www/luci-static /usr/share/luci-static /usr/lib/luci-static; do
-            rm -f "$R/resources/view/nasresize.js" 2>/dev/null || true
-            rm -rf "$R/resources/view/nasresize" 2>/dev/null || true
-          done
-          rm -f /tmp/luci-indexcache* 2>/dev/null || true
-          rm -rf /tmp/luci-modulecache 2>/dev/null || true
-          killall -HUP rpcd 2>/dev/null || true
-          /etc/init.d/rpcd restart >/dev/null 2>&1 || true
-          /etc/init.d/uhttpd restart >/dev/null 2>&1 || true
-          exit 0
-          SCRIPT
-          cp "$SCRIPTS/post-install" "$SCRIPTS/post-upgrade"
-          cat > "$SCRIPTS/post-deinstall" <<'SCRIPT'
-          #!/bin/sh
-          rm -f /tmp/luci-indexcache* 2>/dev/null || true
-          rm -rf /tmp/luci-modulecache 2>/dev/null || true
-          killall -HUP rpcd 2>/dev/null || true
-          exit 0
-          SCRIPT
-          chmod 755 "$SCRIPTS"/*
-          echo "$STAGE" > "$GITHUB_WORKSPACE/.apkstage_path"
-
-      - name: Build APK v3
-        run: |
-          set -eu
-          STAGE=$(cat "$GITHUB_WORKSPACE/.apkstage_path")
-          DATA="$STAGE/data"; SCRIPTS="$STAGE/scripts"
-          OUT="$GITHUB_WORKSPACE/dist"; mkdir -p "$OUT"
-          NAME="luci-app-partexp-cn"
-          VER="1.0-r1"
-          DESC="LuCI 分区扩容(中文增强, 魔改 luci-app-partexp 原位 order54): 无损扩容/减容/拔盘"
-          apk mkpkg \
-            --xattrs=no \
-            --info "name:$NAME" \
-            --info "version:$VER" \
-            --info "description:$DESC" \
-            --info "arch:noarch" \
-            --info "license:MIT" \
-            --info "origin:custom" \
-            --info "maintainer:WorkBuddy" \
-            --script "post-install:$SCRIPTS/post-install" \
-            --script "post-upgrade:$SCRIPTS/post-upgrade" \
-            --script "post-deinstall:$SCRIPTS/post-deinstall" \
-            --files "$DATA" \
-            --output "$OUT/${NAME}-${VER}.apk"
+          echo "=== APK magic (ADBd = v3) ==="
+          for f in "$OUT"/*.apk; do echo -n "$(basename "$f"): "; od -An -c -N4 "$f"; done
           ls -lh "$OUT"/*.apk
-          echo "APK_PATH=$OUT/${NAME}-${VER}.apk" >> "$GITHUB_ENV"
 
-      - name: Verify - real install, assert Chinese view baked in
+      - name: Verify - real install + upgrade-over-official + content asserts
         run: |
           set -eu
-          APK=$(ls "$GITHUB_WORKSPACE"/dist/*.apk)
-          echo "=== magic (ADBd = apk v3) ==="; od -An -c -N4 "$APK"
-          rm -rf /tmp/apkroot; mkdir -p /tmp/apkroot/etc/init.d /tmp/apkroot/tmp
-          # view/menu/acl 都是 bake-in 包文件（非脚本覆盖），故 --no-scripts 即可；
-          # 隔离 root 无 /bin/sh，跑 post-install 会 execve 失败，与包本身无关。
-          apk add --root /tmp/apkroot --initdb --no-scripts --allow-untrusted "$APK"
-          V=/tmp/apkroot/www/luci-static/resources/view/partexp.js
-          echo "=== view 头部 ==="; head -6 "$V"
-          echo "=== 断言：中文界面确实在包内、非原版英文 ==="
-          grep -q 'use strict' "$V"
-          grep -q '无损扩容' "$V"
-          grep -q '拔盘' "$V"
-          grep -q '当前状态' "$V"
-          if grep -q 'One click partition expansion' "$V"; then
-            echo "FAIL: view 仍是原版英文界面"; exit 1
-          fi
-          echo "OK: view 为中文界面"
-          echo "=== 断言：菜单/ACL/后端 ==="
-          grep -q '"order": 54' /tmp/apkroot/usr/share/luci/menu.d/luci-app-partexp.json
-          grep -q '分区扩容' /tmp/apkroot/usr/share/luci/menu.d/luci-app-partexp.json
-          grep -q '"file"' /tmp/apkroot/usr/share/rpcd/acl.d/luci-app-partexp.json
-          [ -f /tmp/apkroot/usr/sbin/nasresize ]
-          [ -f /tmp/apkroot/etc/uci-defaults/99-nasresize ]
-          echo "=== 安装后全部文件 ==="; find /tmp/apkroot -type f | sort
-          echo "INSTALL+CHINESE-VIEW VERIFY PASS"
+          WS="$GITHUB_WORKSPACE"
+          APP=$(ls "$WS"/dist/luci-app-partexp-*.apk)
+          I18=$(ls "$WS"/dist/luci-i18n-partexp-zh-cn-*.apk)
 
-      - name: Publish release asset
+          # 真实 apk 安装两个新包（隔离 root，--no-scripts 避免无 /bin/sh）
+          rm -rf /tmp/apkroot; mkdir -p /tmp/apkroot/tmp
+          echo "=== 1) apk 安装两包（官方原名，验证无文件冲突）==="
+          apk add --root /tmp/apkroot --initdb --no-scripts --allow-untrusted "$APP" "$I18"
+
+          echo "=== 3) 断言：插件本体为官方原版（未被魔改）==="
+          V=/tmp/apkroot/www/luci-static/resources/view/partexp.js
+          grep -q 'One click partition expansion mounting tool' "$V"
+          grep -q 'callPartExpGetDevices' "$V"
+          grep -q 'get_devices' /tmp/apkroot/usr/libexec/rpcd/partexp
+          grep -q '"order": 54' /tmp/apkroot/usr/share/luci/menu.d/luci-app-partexp.json
+          grep -q '"get_devices"' /tmp/apkroot/usr/share/rpcd/acl.d/luci-app-partexp.json
+          [ -x /tmp/apkroot/usr/bin/partexp ] || [ -f /tmp/apkroot/usr/bin/partexp ]
+          echo "OK: 官方原版 view/rpcd/ACL/menu 完整，分区读取关系未被破坏"
+
+          echo "=== 4) 断言：独立中文包 lmo 到位 ==="
+          LMO=/tmp/apkroot/usr/lib/lua/luci/i18n/partexp.zh-cn.lmo
+          [ -f "$LMO" ]
+          echo "lmo size: $(wc -c < "$LMO") bytes"
+          grep -q 'uci set luci.languages.zh_cn' /tmp/apkroot/etc/uci-defaults/luci-i18n-partexp-zh-cn
+          echo "OK: 中文包 partexp.zh-cn.lmo 就位"
+
+          echo "=== 5) 断言：无自定义 nasresize 残留覆盖 ==="
+          [ ! -f /tmp/apkroot/usr/share/luci/menu.d/luci-app-nasresize.json ]
+          [ ! -f /tmp/apkroot/usr/sbin/nasresize ]
+          echo "OK: 无自定义 view/后端残留"
+
+          echo "=== 安装后全部文件 ==="; find /tmp/apkroot -type f | sort
+          echo "INSTALL + OFFICIAL-CONTENT VERIFY PASS"
+
+      - name: Publish release (two APKs)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: |
           set -eu
-          TAG="partexp-cn-apk"
-          APK=$(ls "$GITHUB_WORKSPACE"/dist/*.apk)
+          TAG="partexp-official-apk"
           API="https://api.github.com/repos/$GITHUB_REPOSITORY"
           AUTH="Authorization: Bearer $GH_TOKEN"
           JSONH="Accept: application/vnd.github+json"
-          OLD_ID=$(curl -s -H "$AUTH" -H "$JSONH" "$API/releases/tags/$TAG" | sed -n 's/.*"id": \([0-9]*\).*/\1/p' | head -1)
-          [ -n "$OLD_ID" ] && curl -s -X DELETE -H "$AUTH" -H "$JSONH" "$API/releases/$OLD_ID" >/dev/null || true
+          curl -s -X DELETE -H "$AUTH" -H "$JSONH" "$API/releases/tags/$TAG" >/dev/null || true
           curl -s -X DELETE -H "$AUTH" -H "$JSONH" "$API/git/refs/tags/$TAG" >/dev/null || true
           REL=$(curl -s -X POST -H "$AUTH" -H "$JSONH" -H "Content-Type: application/json" "$API/releases" \
-            -d "{\"tag_name\":\"$TAG\",\"name\":\"分区扩容(中文·魔改 partexp 原位)\",\"body\":\"替换原版英文 partexp：菜单位置(order54)/名字不变，点开为中文『分区扩容』界面，支持无损扩容/减容/拔盘。三机型通用。安装见使用说明。\",\"target_commitish\":\"$GITHUB_SHA\",\"draft\":false,\"prerelease\":false}")
+            -d "{\"tag_name\":\"$TAG\",\"name\":\"分区扩容 官方原版(插件包+中文包)\",\"body\":\"照搬 sirpdboy/luci-app-partexp v2.0.5 两个原版包：插件包 + 独立中文包(lmo)。同名升级覆盖固件自带版本，修复被自定义 view/ACL 搞坏的 load error 与英文界面。菜单位置/名字不变。三机型通用。\",\"target_commitish\":\"$GITHUB_SHA\",\"draft\":false,\"prerelease\":false}")
           UPLOAD_URL=$(printf '%s' "$REL" | sed -n 's/.*"upload_url": "\([^"]*\)".*/\1/p' | sed 's/{?name,label}//')
           [ -n "$UPLOAD_URL" ] || { echo "release 失败: $REL"; exit 1; }
-          curl -s -X POST -H "$AUTH" -H "Content-Type: application/vnd.alpine.linux.apk" \
-               --data-binary "@$APK" "$UPLOAD_URL?name=$(basename "$APK")" >/dev/null
+          for f in "$GITHUB_WORKSPACE"/dist/*.apk; do
+            curl -s -X POST -H "$AUTH" -H "Content-Type: application/vnd.alpine.linux.apk" \
+                 --data-binary "@$f" "$UPLOAD_URL?name=$(basename "$f")" >/dev/null
+            echo "uploaded $(basename "$f")"
+          done
           echo "=== 已发布 ==="
-          curl -s -H "$AUTH" -H "$JSONH" "$API/releases/tags/$TAG" | grep -oE '"browser_download_url": "[^"]+\.apk"' | head -1
+          curl -s -H "$AUTH" -H "$JSONH" "$API/releases/tags/$TAG" | grep -oE '"browser_download_url": "[^"]+\.apk"'
