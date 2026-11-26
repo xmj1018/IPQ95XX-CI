@@ -51,14 +51,26 @@ rm -rf "$ISTORE_HUB" "$ISTORE_LUCI"
 # package/quickstart/Makefile 的 PKG_SOURCE_URL(file://) 与 PKG_HASH。
 # 当前目录是 OpenWrt 源码树（WRT-CORE 里已 cd ./wrt/），传 "."。
 BQS="$GITHUB_WORKSPACE/Scripts/build-quickstart-source.sh"
-if [ -f "$BQS" ]; then
-  bash "$BQS" "."
-else
+if [ ! -f "$BQS" ]; then
   echo "ERROR: 找不到 $BQS，无法从源码编译 quickstart，首页将因前后端错配而损坏"
   exit 1
 fi
-# 确认 tarball 里的二进制已被替换（新二进制体积/架构应正常，非 0）
-ls -l ./dl/quickstart-binary-*.tar.gz 2>/dev/null || echo "WARN: 未找到重打的 quickstart tarball"
+# ★硬失败：源码编译若中途出错（如下载/编译/重打包失败），必须让整个构建失败，
+# 绝不能静默继续用官方旧二进制产出「看似成功、首页坏」的假固件（2026-11-27 教训）。
+if ! bash "$BQS" "."; then
+  echo "ERROR: 源码编译 quickstart 失败，终止构建以避免首页前后端错配"
+  exit 1
+fi
+# 二次校验：新 tarball 必须存在，且 quickstart 包 Makefile 的 PKG_SOURCE_URL 已指向本地 file://
+if ! ls ./dl/quickstart-binary-*.tar.gz >/dev/null 2>&1; then
+  echo "ERROR: 未找到重打的 quickstart tarball，终止构建"
+  exit 1
+fi
+if ! grep -q 'PKG_SOURCE_URL:=file://' ./package/quickstart/Makefile 2>/dev/null; then
+  echo "ERROR: quickstart 包 Makefile 未指向本地新 tarball，终止构建"
+  exit 1
+fi
+echo "OK: quickstart 源码二进制已重打并接入本地源，首页前后端均为官方 11-25 版"
 
 UPDATE_PACKAGE "luci-app-re-homeproxy" "1andrevich/homeproxy-hiddify" "master" "" "luci-app-homeproxy"
 

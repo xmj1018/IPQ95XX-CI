@@ -116,8 +116,20 @@ jobs:
           #   app-hub 打包用的还是只听 TCP 3038 的旧二进制 → 前后端错配。
           #   不再打 backend 补丁，改为从官方源码现编新二进制（前后端同一版、天然配套）。
           #   当前目录是 wrt/（OpenWrt 源码树），传 "."。
-          bash "$GITHUB_WORKSPACE/Scripts/build-quickstart-source.sh" "."
-          ls -l ./dl/quickstart-binary-*.tar.gz 2>/dev/null || echo "WARN: 未找到重打的 quickstart tarball"
+          # ★硬失败：源码编译若出错必须让构建失败，绝不能静默用旧二进制产出首页坏的假固件
+          if ! bash "$GITHUB_WORKSPACE/Scripts/build-quickstart-source.sh" "."; then
+            echo "ERROR: 源码编译 quickstart 失败，终止构建以避免首页前后端错配"
+            exit 1
+          fi
+          if ! ls ./dl/quickstart-binary-*.tar.gz >/dev/null 2>&1; then
+            echo "ERROR: 未找到重打的 quickstart tarball，终止构建"
+            exit 1
+          fi
+          if ! grep -q 'PKG_SOURCE_URL:=file://' ./package/quickstart/Makefile 2>/dev/null; then
+            echo "ERROR: quickstart 包 Makefile 未指向本地新 tarball，终止构建"
+            exit 1
+          fi
+          echo "OK: quickstart 源码二进制已重打并接入本地源"
           # ★Argon 主题：直接 clone 作者官方仓库（jerrykuku）master，编最新版 3.2.0。
           #   按作者 DEVELOPMENT.md 的官方做法，不用任何第三方 feed 的旧版/魔改版。
           #   先删 install -a 拉进来的软链，避免同名包冲突。
