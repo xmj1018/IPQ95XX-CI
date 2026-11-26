@@ -20,9 +20,9 @@ jobs:
       # 不支持 --info/--files 新语法)。强制确认装的是 3.x。
       - name: Install tools
         run: |
-          apk add --no-cache --upgrade apk-tools git bash tar gzip gh
+          apk add --no-cache --upgrade apk-tools git bash tar gzip curl
           apk --version
-          gh --version | head -1
+          curl --version | head -1
 
       - uses: actions/checkout@v4
 
@@ -112,20 +112,37 @@ jobs:
           tar tzf "$OUT/${NAME}-${VER}.apk" 2>/dev/null | head || true
           echo "APK_PATH=$OUT/${NAME}-${VER}.apk" >> "$GITHUB_ENV"
 
-      - name: Publish release asset
+      - name: Publish release asset (GitHub REST API)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
         run: |
           set -eu
           TAG="nasresize-apk-v3"
           APK=$(ls "$GITHUB_WORKSPACE"/dist/*.apk)
-          # 删除旧 tag/release 后重建, 保证 asset 唯一
-          gh release delete "$TAG" -y >/dev/null 2>&1 || true
-          git tag -f "$TAG" >/dev/null 2>&1 || true
-          git push -f origin "$TAG" >/dev/null 2>&1 || true
-          gh release create "$TAG" "$APK" \
-            --title "nasresize APK v3 (LuCI 无损扩容/减容)" \
-            --notes "Standard APK v3 built by official apk mkpkg. Install: apk add --allow-untrusted luci-app-nasresize-1.0-r1.apk" \
-            --target "$GITHUB_SHA"
+          API="https://api.github.com/repos/$GITHUB_REPOSITORY"
+          AUTH="Authorization: Bearer $GH_TOKEN"
+          JSONH="Accept: application/vnd.github+json"
+
+          # 若旧 release 存在先删 (含其 assets), 再重建, 保证 asset 唯一
+          OLD_ID=$(curl -s -H "$AUTH" -H "$JSONH" "$API/releases/tags/$TAG" \
+                    | sed -n 's/.*"id": \([0-9]*\).*/\1/p' | head -1)
+          if [ -n "$OLD_ID" ]; then
+            curl -s -X DELETE -H "$AUTH" -H "$JSONH" "$API/releases/$OLD_ID" >/dev/null || true
+          fi
+          curl -s -X DELETE -H "$AUTH" -H "$JSONH" "$API/git/refs/tags/$TAG" >/dev/null || true
+
+          # 创建 release (target_commitish = 当前 commit)
+          REL=$(curl -s -X POST -H "$AUTH" -H "$JSONH" -H "Content-Type: application/json" \
+                "$API/releases" \
+                -d "{\"tag_name\":\"$TAG\",\"name\":\"nasresize APK v3 (LuCI 分区扩容)\",\"body\":\"Standard APK v3 built by official apk mkpkg. Install: apk add --allow-untrusted luci-app-nasresize-1.0-r1.apk\",\"target_commitish\":\"$GITHUB_SHA\",\"draft\":false,\"prerelease\":false}")
+          UPLOAD_URL=$(printf '%s' "$REL" | sed -n 's/.*"upload_url": "\([^"]*\)".*/\1/p' | sed 's/{?name,label}//')
+          echo "upload_url=$UPLOAD_URL"
+          [ -n "$UPLOAD_URL" ] || { echo "创建 release 失败: $REL"; exit 1; }
+
+          # 上传 apk asset
+          curl -s -X POST -H "$AUTH" -H "Content-Type: application/vnd.alpine.linux.apk" \
+               --data-binary "@$APK" "$UPLOAD_URL?name=$(basename "$APK")" >/dev/null
           echo "=== release 已发布 ==="
-          gh release view "$TAG" --json tagName,assets
+          curl -s -H "$AUTH" -H "$JSONH" "$API/releases/tags/$TAG" \
+            | grep -oE '"browser_download_url": "[^"]+\.apk"' | head -1

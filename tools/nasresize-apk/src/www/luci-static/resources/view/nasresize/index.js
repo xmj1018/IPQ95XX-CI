@@ -224,7 +224,7 @@ return view.extend({
 			E('style', {}, CSS),
 			E('div', { 'class': 'rz-head' }, [
 				E('div', {}, [
-					E('h2', { 'class': 'rz-title' }, '无损扩容 / 减容'),
+					E('h2', { 'class': 'rz-title' }, '分区扩容'),
 					E('div', { 'class': 'rz-sub' },
 						'把 U 盘无损挂载为 /overlay 扩大可写空间（配置完整保留）；也可反向把 U 盘数据写回内部 flash 后安全拔盘。' +
 						'所有操作在任何一步失败都不会破坏当前系统，fstab 改动前自动备份。')
