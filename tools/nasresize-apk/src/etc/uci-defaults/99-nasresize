@@ -1,0 +1,5 @@
+#!/bin/sh
+# 首次安装: 确保后端脚本可执行, 建好运行时目录
+chmod 755 /usr/sbin/nasresize 2>/dev/null
+mkdir -p /var/log /var/lock /mnt 2>/dev/null
+exit 0

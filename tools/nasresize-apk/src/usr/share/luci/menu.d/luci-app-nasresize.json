@@ -1,0 +1,10 @@
+{
+	"admin/system/nasresize": {
+		"title": "无损扩容/减容",
+		"order": 97,
+		"action": {
+			"type": "view",
+			"path": "nasresize"
+		}
+	}
+}

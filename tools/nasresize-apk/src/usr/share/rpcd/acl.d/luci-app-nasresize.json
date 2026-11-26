@@ -1,0 +1,15 @@
+{
+	"luci-app-nasresize": {
+		"description": "Lossless overlay expand / reduce with config preservation",
+		"read": {
+			"file": {
+				"/usr/sbin/nasresize": [ "exec" ]
+			}
+		},
+		"write": {
+			"file": {
+				"/usr/sbin/nasresize": [ "exec" ]
+			}
+		}
+	}
+}

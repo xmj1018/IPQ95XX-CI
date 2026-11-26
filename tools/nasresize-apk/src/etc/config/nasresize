@@ -1,0 +1,2 @@
+config nasresize 'global'
+	option enabled '1'

@@ -1,0 +1,124 @@
+name: Build nasresize APK v3
+
+# 只打包纯脚本插件 nasresize 为标准 APK v3 (apk-tools mkpkg)。
+# 不编译固件、不碰任何 Config/ 或 workflow 构建链。
+# 生成的 .apk 作为独立 release asset 发布 (tag: nasresize-apk-v3)。
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apk-v3:
+    runs-on: ubuntu-latest
+    container:
+      image: alpine:3.21
+    steps:
+      - name: Install tools
+        run: apk add --no-cache git bash tar gzip
+
+      - uses: actions/checkout@v4
+
+      - name: Verify apk mkpkg available
+        run: |
+          apk --version
+          apk mkpkg --help >/dev/null 2>&1 || true
+          echo "apk tools ready"
+
+      - name: Stage package data tree
+        run: |
+          set -eu
+          STAGE="$GITHUB_WORKSPACE/.apkstage"
+          DATA="$STAGE/data"
+          SCRIPTS="$STAGE/scripts"
+          SRC="$GITHUB_WORKSPACE/tools/nasresize-apk/src"
+          rm -rf "$STAGE"
+          mkdir -p "$DATA" "$SCRIPTS"
+
+          # 数据文件按最终安装路径铺开
+          cp -a "$SRC/etc"          "$DATA/etc"
+          cp -a "$SRC/usr"          "$DATA/usr"
+          cp -a "$SRC/www"          "$DATA/www"
+          chown -R 0:0 "$DATA" "$SCRIPTS"
+
+          # conffiles: 配置文件升级时保留用户修改
+          mkdir -p "$DATA/lib/apk/packages"
+          printf '%s\n' '/etc/config/nasresize' > "$DATA/lib/apk/packages/luci-app-nasresize.conffiles"
+          ( cd "$DATA" && find . -type f -o -type l | sed 's|^\./|/|' | sort > "lib/apk/packages/luci-app-nasresize.list" )
+
+          # 生命周期脚本 (apk 命名规范)
+          cat > "$SCRIPTS/post-install" <<'EOF'
+          #!/bin/sh
+          chmod 755 /usr/sbin/nasresize 2>/dev/null || true
+          chmod 755 /etc/uci-defaults/99-nasresize 2>/dev/null || true
+          mkdir -p /var/log /var/lock /mnt 2>/dev/null || true
+          rm -f /tmp/luci-indexcache* 2>/dev/null || true
+          rm -rf /tmp/luci-modulecache 2>/dev/null || true
+          killall -HUP rpcd 2>/dev/null || true
+          exit 0
+          EOF
+          cp "$SCRIPTS/post-install" "$SCRIPTS/post-upgrade"
+          cat > "$SCRIPTS/post-deinstall" <<'EOF'
+          #!/bin/sh
+          rm -f /tmp/luci-indexcache* 2>/dev/null || true
+          rm -rf /tmp/luci-modulecache 2>/dev/null || true
+          killall -HUP rpcd 2>/dev/null || true
+          exit 0
+          EOF
+          chmod 755 "$SCRIPTS"/*
+
+          echo "$STAGE" > "$GITHUB_WORKSPACE/.apkstage_path"
+
+      - name: Build APK v3 with official apk mkpkg
+        run: |
+          set -eu
+          STAGE=$(cat "$GITHUB_WORKSPACE/.apkstage_path")
+          DATA="$STAGE/data"
+          SCRIPTS="$STAGE/scripts"
+          OUT="$GITHUB_WORKSPACE/dist"
+          mkdir -p "$OUT"
+          NAME="luci-app-nasresize"
+          VER="1.0-r1"
+          DESC="Lossless overlay expand/reduce with config preservation for LuCI"
+
+          # apk mkpkg 生成标准 APK v3 (三段 gzip: signatures/control/data)。
+          # --xattrs=no 避免容器注入 xattr; arch=noarch 纯脚本通用。
+          apk mkpkg \
+            --xattrs=no \
+            --info "name:$NAME" \
+            --info "version:$VER" \
+            --info "description:$DESC" \
+            --info "arch:noarch" \
+            --info "license:MIT" \
+            --info "origin:custom" \
+            --info "maintainer:WorkBuddy" \
+            --script "post-install:$SCRIPTS/post-install" \
+            --script "post-upgrade:$SCRIPTS/post-upgrade" \
+            --script "post-deinstall:$SCRIPTS/post-deinstall" \
+            --files "$DATA" \
+            --output "$OUT/${NAME}-${VER}.apk"
+
+          ls -lh "$OUT"/*.apk
+          echo "=== 包内条目 (验证为 v3 三段结构) ==="
+          tar tzf "$OUT/${NAME}-${VER}.apk" 2>/dev/null | head || true
+          echo "APK_PATH=$OUT/${NAME}-${VER}.apk" >> "$GITHUB_ENV"
+
+      - name: Publish release asset
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -eu
+          TAG="nasresize-apk-v3"
+          APK=$(ls "$GITHUB_WORKSPACE"/dist/*.apk)
+          # 删除旧 tag/release 后重建, 保证 asset 唯一
+          gh release delete "$TAG" -y >/dev/null 2>&1 || true
+          git tag -f "$TAG" >/dev/null 2>&1 || true
+          git push -f origin "$TAG" >/dev/null 2>&1 || true
+          gh release create "$TAG" "$APK" \
+            --title "nasresize APK v3 (LuCI 无损扩容/减容)" \
+            --notes "Standard APK v3 built by official apk mkpkg. Install: apk add --allow-untrusted luci-app-nasresize-1.0-r1.apk" \
+            --target "$GITHUB_SHA"
+          echo "=== release 已发布 ==="
+          gh release view "$TAG" --json tagName,assets

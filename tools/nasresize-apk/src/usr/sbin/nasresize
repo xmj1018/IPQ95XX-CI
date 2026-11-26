@@ -1,0 +1,349 @@
+#!/bin/sh
+# nasresize - 无损 overlay 扩容 / 减容 (sirpdboy/luci-app-partexp 风格, 增加减容与拔盘保留配置)
+#
+# 用法:
+#   nasresize status                 输出 JSON 状态 (供 LuCI 轮询)
+#   nasresize devices                输出可扩容磁盘的 JSON 列表
+#   nasresize expand <dev> [ext4|f2fs]   无损扩容到 U 盘 (保留现有配置)
+#   nasresize reduce                 减容: 把 U 盘当前数据写回内部 flash, 撤销 extroot (保留配置)
+#   nasresize detach                 仅撤销 extroot / 拔盘 (可选是否回写), 回到内部 flash
+#   nasresize log                    打印最近日志
+#
+# 设计要点:
+#   expand 前把"内部 overlay 源设备"快照写入 /etc/nasresize.state, 该 state 文件位于
+#   /etc (overlay upper), 会随 tar 一起被复制到 U 盘。reduce 时据此精确挂载内部 flash
+#   做反向写回, 全程不 umount 正在承载系统的 U 盘 /overlay。
+#   fstab 任何改动前都先备份到 /etc/nasresize-fstab.bak, 失败即回滚。
+#
+# 许可: Apache-2.0 (与 partexp 一致)
+
+set -u
+
+NAME="nasresize"
+STATE_FILE="/etc/nasresize.state"
+FSTAB="/etc/config/fstab"
+FSTAB_BAK="/etc/nasresize-fstab.bak"
+LOG="/var/log/${NAME}.log"
+LOCK="/var/lock/${NAME}.lock"
+MNT="/mnt/${NAME}-work"
+SAFE="/var/run/${NAME}-safe"     # 标记: 扩容成功后写入, 允许 reduce/detach
+
+# ---------- 基础工具 ----------
+log()  { echo "$(date '+%F %T') $*" >> "$LOG" 2>/dev/null; }
+out()  { echo "$*"; }
+fail() { log "ERROR: $*"; echo "ERROR: $*" >&2; exit 1; }
+
+jq_kv() { # 输出一个 JSON 字符串字段
+	printf '"%s":"%s"' "$1" "$(printf '%s' "$2" | sed 's/\\/\\\\/g; s/"/\\"/g')"
+}
+
+need_root() {
+	[ "$(id -u)" = "0" ] || fail "需要 root 权限"
+}
+
+# ---------- overlay 源定位 (沿用 partexp 的 get_overlay_src) ----------
+get_overlay_src() {
+	local src upper
+	upper=$(sed -n 's/.*upperdir=\([^,]*\).*/\1/p' /proc/self/mountinfo 2>/dev/null | head -1)
+	src="${upper%/upper}"
+	if [ -n "$src" ] && [ -d "$src" ]; then echo "$src"; return 0; fi
+	for src in /overlay /rom/overlay; do
+		[ -d "$src" ] && { echo "$src"; return 0; }
+	done
+	return 1
+}
+
+# 判断当前是否 extroot (fstab 里存在 enabled 的 target=/overlay 外部挂载)
+extroot_active() {
+	[ -f "$STATE_FILE" ] || return 1
+	grep -q '^EXTROOT=1' "$STATE_FILE" 2>/dev/null || return 1
+	return 0
+}
+
+state_get() { # state_get KEY
+	[ -f "$STATE_FILE" ] || return 1
+	sed -n "s/^$1=//p" "$STATE_FILE" | head -1
+}
+
+# ---------- 状态输出 ----------
+cmd_status() {
+	local mode="unknown" src="" dev="" uuid="" fstype="" size="" used="" inner_dev="" inner_fs="" inner_wb="" safe=0
+	src=$(get_overlay_src 2>/dev/null) || src=""
+	# 当前承载 /overlay 的实际块设备 (df 返回真实设备节点; mountinfo $3 是 major:minor 不可用)
+	if [ -n "$src" ]; then
+		dev=$(df "$src" 2>/dev/null | awk 'NR==2{print $1}')
+	fi
+	if extroot_active; then
+		mode="extroot"
+		safe=1
+		uuid=$(state_get EXT_UUID 2>/dev/null)
+		fstype=$(state_get EXT_FSTYPE 2>/dev/null)
+		size=$(df -h "$src" 2>/dev/null | awk 'NR==2{print $2}')
+		used=$(df -h "$src" 2>/dev/null | awk 'NR==2{print $3}')
+		inner_dev=$(state_get INNER_DEV 2>/dev/null)
+		inner_fs=$(state_get INNER_FSTYPE 2>/dev/null)
+		inner_wb=$(state_get INNER_WRITEBACK 2>/dev/null)
+	else
+		mode="internal"
+	fi
+	[ -f "$SAFE" ] && safe=1
+	local lock=0; [ -d "$LOCK" ] && lock=1
+	local body=""
+	body="$(jq_kv ok 1),$(jq_kv mode "$mode"),$(jq_kv src "$src"),$(jq_kv dev "$dev"),$(jq_kv uuid "$uuid")"
+	body="$body,$(jq_kv fstype "$fstype"),$(jq_kv size "$size"),$(jq_kv used "$used")"
+	body="$body,$(jq_kv inner_dev "$inner_dev"),$(jq_kv inner_fs "$inner_fs"),$(jq_kv inner_wb "$inner_wb"),$(jq_kv safe "$safe"),$(jq_kv busy "$lock")"
+	out "{${body}}"
+}
+
+# ---------- 可扩容设备列表 ----------
+cmd_devices() {
+	local first=1 dev sz fs mnt model
+	out "["
+	for dev in /dev/sd[a-z]1 /dev/sd[a-z] /dev/vd[a-z]1 /dev/nvme0n1p1 /dev/mmcblk0p1; do
+		[ -b "$dev" ] || continue
+		# 跳过当前 overlay 正在使用的设备
+		local src cur=""
+		src=$(get_overlay_src 2>/dev/null) || src=""
+		[ -n "$src" ] && cur=$(df "$src" 2>/dev/null | awk 'NR==2{print $1}')
+		case "$cur" in *"$(basename "$dev")"*) continue;; esac
+		sz=$(block info "$dev" 2>/dev/null | sed -n 's/.*"SIZE":"\([^"]*\)".*/\1/p')
+		[ -z "$sz" ] && sz=$(cat "/sys/class/block/$(basename "$dev")/size" 2>/dev/null | awk '{printf "%.1f GB", $1*512/1024/1024/1024}')
+		fs=$(blkid -o value -s TYPE "$dev" 2>/dev/null)
+		mnt=$(mount 2>/dev/null | grep -w "$dev" | awk '{print $3}' | head -1)
+		model=$(cat "/sys/class/block/$(basename "$dev")/device/model" 2>/dev/null | tr -d ' ')
+		[ $first -eq 0 ] && out ","
+		first=0
+		local o="$(jq_kv dev "$dev"),$(jq_kv size "$sz"),$(jq_kv fstype "$fs"),$(jq_kv mounted "$mnt"),$(jq_kv model "$model")"
+		out "{${o}}"
+	done
+	out "]"
+}
+
+# ---------- fstab 备份/回滚 ----------
+backup_fstab() { cp -f "$FSTAB" "$FSTAB_BAK" 2>/dev/null; }
+restore_fstab() { [ -f "$FSTAB_BAK" ] && cp -f "$FSTAB_BAK" "$FSTAB" 2>/dev/null; }
+
+# 设置一个 mount 条目的 target=u盘uuid / enabled
+make_extroot_fstab() {
+	local uuid="$1"
+	block detect > "$FSTAB" 2>/dev/null || fail "block detect 失败"
+	local n i sec u
+	n=$(grep -c "'mount'" "$FSTAB" 2>/dev/null)
+	[ -z "$n" ] && n=0
+	i=0
+	while [ $i -lt "$n" ]; do
+		sec="@mount[$i]"
+		u=$(uci -q get fstab.$sec.uuid 2>/dev/null)
+		if [ "$u" = "$uuid" ]; then
+			uci -q set fstab.$sec.target="/overlay"
+			uci -q set fstab.$sec.enabled="1"
+		fi
+		i=$((i+1))
+	done
+	uci -q set fstab.@global[0].delay_root="15" 2>/dev/null
+	uci commit fstab 2>/dev/null || fail "uci commit fstab 失败"
+}
+
+# 撤销 extroot: 把指向 U 盘 UUID 的条目禁用/改回普通挂载
+clear_extroot_fstab() {
+	[ -f "$FSTAB" ] || return 0
+	backup_fstab
+	local n i sec u
+	n=$(grep -c "'mount'" "$FSTAB" 2>/dev/null)
+	[ -z "$n" ] && n=0
+	i=0
+	while [ $i -lt "$n" ]; do
+		sec="@mount[$i]"
+		u=$(uci -q get fstab.$sec.uuid 2>/dev/null)
+		[ "$(uci -q get fstab.$sec.target 2>/dev/null)" = "/overlay" ] && {
+			uci -q set fstab.$sec.enabled="0"
+			uci -q delete fstab.$sec.target
+		}
+		i=$((i+1))
+	done
+	uci -q set fstab.@global[0].delay_root="5" 2>/dev/null
+	uci commit fstab 2>/dev/null || { restore_fstab; fail "撤销时 uci commit 失败"; }
+}
+
+# ---------- 扩容 ----------
+cmd_expand() {
+	need_root
+	local dev="$1" fstype="${2:-ext4}"
+	[ -n "$dev" ] || fail "用法: nasresize expand <dev> [ext4|f2fs]"
+	case "$dev" in /dev/*) ;; *) dev="/dev/$dev";; esac
+	[ -b "$dev" ] || fail "设备不存在: $dev"
+	extroot_active && fail "当前已经处于扩容状态, 请先执行 reduce 或 detach"
+	mkdir -p "$LOCK" 2>/dev/null || fail "另一个任务正在进行"
+	trap 'rm -rf "$LOCK"' EXIT INT TERM
+
+	local src
+	src=$(get_overlay_src) || fail "找不到当前 overlay 数据目录"
+	local devbase="$(basename "$dev")"
+	local cur="$(df "$src" 2>/dev/null | awk 'NR==2{print $1}')"
+	case "$cur" in *"$devbase"*) fail "不能对当前系统盘扩容";; esac
+	mount 2>/dev/null | grep -qw "$dev" && fail "设备 $dev 已被挂载, 请先卸载"
+
+	log "=== expand start dev=$dev fstype=$fstype ==="
+	case "$fstype" in
+		ext4) mkfs.ext4 -F -q "$dev" >/dev/null 2>&1 || fail "mkfs.ext4 失败 (固件需 e2fsprogs)";;
+		f2fs) mkfs.f2fs -f "$dev" >/dev/null 2>&1 || fail "mkfs.f2fs 失败 (固件需 f2fs-tools)";;
+		*) fail "文件系统仅支持 ext4 或 f2fs";;
+	esac
+	local uuid
+	uuid=$(blkid -o value -s UUID "$dev" 2>/dev/null)
+	[ -n "$uuid" ] || fail "无法读取 $dev 的 UUID"
+
+	mkdir -p "$MNT" 2>/dev/null
+	umount "$MNT" 2>/dev/null
+	mount -t "$fstype" "$dev" "$MNT" 2>/dev/null || fail "挂载 $dev 失败"
+
+	# 空间预检: U 盘可用空间必须大于当前 overlay 已用
+	local need avail
+	need=$(du -sk "$src" 2>/dev/null | awk '{print $1}')
+	avail=$(df -k "$MNT" 2>/dev/null | awk 'NR==2{print $4}')
+	if [ -n "$need" ] && [ -n "$avail" ] && [ "$need" -gt "$avail" ]; then
+		umount "$MNT" 2>/dev/null
+		fail "U 盘可用空间 ($((avail/1024))MB) 小于当前 overlay 数据 ($((need/1024))MB), 已中止"
+	fi
+
+	# 记录内部 overlay 源设备快照 (写入 /etc, 会随 tar 复制到 U 盘)
+	# 扩容前 df($src) 指向内部 flash; 用 df 取真实设备节点, mountinfo $3 只是 major:minor 不可用
+	local inner_dev="" inner_fs=""
+	inner_dev=$(df "$src" 2>/dev/null | awk 'NR==2{print $1}')
+	case "$inner_dev" in
+		overlay*|rootfs|tmpfs) inner_dev=$(awk -v p="$src" '$5==p {print $9}' /proc/self/mountinfo 2>/dev/null | head -1);;
+	esac
+	inner_fs=$(blkid -o value -s TYPE "$inner_dev" 2>/dev/null)
+	# 判断内部设备是否是"可独立 mount 的真实块设备"。
+	# UBI fit 布局下 overlay 常落在 ubifs 卷 / overlayfs 伪设备上, 这类设备无法在
+	# extroot 运行时被二次挂载写回; 标记 INNER_WRITEBACK=0, reduce 时拒绝自动写回,
+	# 只提供 detach(拔盘), 避免误操作导致内部系统不可启动。
+	local inner_wb=1
+	case "$inner_dev" in
+		''|tmpfs|overlay|rootfs|none|udev*|/dev/root) inner_wb=0;;
+		*ubi*|ubi0:*|/dev/ubiblock*) inner_wb=0;;
+	esac
+	case "$inner_fs" in
+		ubifs|squashfs|overlayfs) inner_wb=0;;
+	esac
+	[ -b "$inner_dev" ] || inner_wb=0
+
+	cat > "$STATE_FILE" <<EOF
+# nasresize state - 由 expand 生成, 请勿手工修改
+EXTROOT=1
+EXT_DEV=$dev
+EXT_UUID=$uuid
+EXT_FSTYPE=$fstype
+EXT_TIME=$(date '+%F %T')
+INNER_DEV=$inner_dev
+INNER_FSTYPE=$inner_fs
+INNER_SRC=$src
+INNER_WRITEBACK=$inner_wb
+EOF
+	log "state: inner_dev=$inner_dev inner_fs=$inner_fs inner_wb=$inner_wb ext_uuid=$uuid"
+
+	# 无损复制: tar 保留权限/软链/配置
+	log "copying overlay $src -> $MNT"
+	if ! tar -C "$src" -cf - . 2>/dev/null | tar -C "$MNT" -xf - 2>/dev/null; then
+		rm -f "$STATE_FILE"; umount "$MNT" 2>/dev/null
+		fail "配置复制失败, 已清理, 系统未受影响"
+	fi
+	# 校验关键配置确实过去了
+	if [ ! -f "$MNT/etc/config/network" ]; then
+		rm -f "$STATE_FILE"; umount "$MNT" 2>/dev/null
+		fail "拷贝校验失败 (缺 /etc/config/network), 已清理"
+	fi
+	umount "$MNT" 2>/dev/null || fail "卸载 $MNT 失败, 请手动 umount 后再试"
+
+	backup_fstab
+	if ! make_extroot_fstab "$uuid"; then
+		restore_fstab; rm -f "$STATE_FILE"
+		fail "写入 fstab 失败, 已回滚"
+	fi
+	: > "$SAFE"
+	log "=== expand done, uuid=$uuid, 需要重启生效 ==="
+	out "OK: 扩容完成 (uuid=$uuid)。请重启; 重启后 /overlay 将指向 U 盘, 配置已完整保留。"
+}
+
+# ---------- 减容: 把 U 盘当前数据写回内部 flash ----------
+cmd_reduce() {
+	need_root
+	extroot_active || fail "当前不是扩容状态, 无需减容"
+	[ -f "$SAFE" ] || fail "缺少安全标记 $SAFE, 拒绝减容"
+	local inner_dev inner_fs src ext_dev inner_wb
+	inner_dev=$(state_get INNER_DEV 2>/dev/null)
+	inner_fs=$(state_get INNER_FSTYPE 2>/dev/null)
+	ext_dev=$(state_get EXT_DEV 2>/dev/null)
+	inner_wb=$(state_get INNER_WRITEBACK 2>/dev/null)
+	[ "$inner_wb" = "0" ] && fail "本机内部 overlay 是 UBI/伪设备, 无法在扩容运行时安全写回。请改用 '仅撤销/拔盘'(detach), 它保留 U 盘数据、重启后回到内部 flash 的原配置。"
+	[ -n "$inner_dev" ] && [ -b "$inner_dev" ] || fail "内部 overlay 设备 $inner_dev 不可用, 拒绝减容; 可改用 detach 仅拔盘"
+	[ -n "$inner_fs" ] || inner_fs="ext4"
+	mkdir -p "$LOCK" 2>/dev/null || fail "另一个任务正在进行"
+	trap 'rm -rf "$LOCK"' EXIT INT TERM
+
+	src=$(get_overlay_src) || fail "找不到当前 overlay 数据目录 (U 盘)"
+	log "=== reduce start: $src -> internal $inner_dev ($inner_fs) ==="
+
+	# 关键: 把内部 flash 分区挂到临时点。此时它未被系统使用, 可以安全挂载写入。
+	mkdir -p "$MNT" 2>/dev/null
+	umount "$MNT" 2>/dev/null
+	mount -t "$inner_fs" "$inner_dev" "$MNT" 2>/dev/null || \
+		fail "挂载内部 flash ($inner_fs $inner_dev) 失败, 未做任何改动; 可改用 detach 仅拔盘"
+
+	local need avail
+	need=$(du -sk "$src" 2>/dev/null | awk '{print $1}')
+	avail=$(df -k "$MNT" 2>/dev/null | awk 'NR==2{print $4}')
+	if [ -n "$need" ] && [ -n "$avail" ] && [ "$need" -gt "$avail" ]; then
+		umount "$MNT" 2>/dev/null
+		fail "U 盘数据 ($((need/1024))MB) 大于内部 flash 可用 ($((avail/1024))MB), 写不下; 未做任何改动"
+	fi
+
+	# 反向 tar: U 盘当前数据 -> 内部 flash (含扩容后新增/修改的配置与软件)
+	log "writing back $src -> $MNT"
+	if ! tar -C "$src" -cf - . 2>/dev/null | tar -C "$MNT" -xf - 2>/dev/null; then
+		umount "$MNT" 2>/dev/null
+		fail "写回失败, 未修改 fstab, 系统仍可正常从 U 盘运行"
+	fi
+	if [ ! -f "$MNT/etc/config/network" ]; then
+		umount "$MNT" 2>/dev/null
+		fail "写回校验失败, 未修改 fstab"
+	fi
+	# 内部 flash 上不再需要 state 标记, 清掉以免重启后状态误判
+	rm -f "$MNT/etc/nasresize.state" "$SAFE" 2>/dev/null
+	umount "$MNT" 2>/dev/null || fail "卸载内部 flash 失败"
+
+	# 撤销 extroot: 下次启动回到内部 flash
+	clear_extroot_fstab || fail "撤销 extroot 失败, 请检查 fstab"
+	rm -f "$STATE_FILE" "$SAFE" 2>/dev/null
+	log "=== reduce done, 需要重启; 重启后可安全拔掉 U 盘 ($ext_dev) ==="
+	out "OK: 减容完成, U 盘当前配置/软件已写回内部 flash。请重启, 确认正常后拔掉 U 盘 ($ext_dev)。"
+}
+
+# ---------- 仅拔盘/撤销 extroot ----------
+cmd_detach() {
+	need_root
+	extroot_active || fail "当前不是扩容状态"
+	mkdir -p "$LOCK" 2>/dev/null || fail "另一个任务正在进行"
+	trap 'rm -rf "$LOCK"' EXIT INT TERM
+	local ext_dev
+	ext_dev=$(state_get EXT_DEV 2>/dev/null)
+	clear_extroot_fstab || fail "撤销 extroot 失败"
+	rm -f "$STATE_FILE" "$SAFE" 2>/dev/null
+	log "=== detach done, 回到扩容前的内部配置, U盘=$ext_dev 可拔 ==="
+	out "OK: 已撤销 extroot。请重启; 重启后使用内部 flash 的扩容前配置, U 盘 ($ext_dev) 可安全拔掉。"
+}
+
+cmd_log() {
+	if [ -f "$LOG" ]; then tail -n 80 "$LOG"; else out "(暂无日志)"; fi
+}
+
+# ---------- 入口 ----------
+case "${1:-}" in
+	status)   cmd_status;;
+	devices)  cmd_devices;;
+	expand)   shift; cmd_expand "$@";;
+	reduce)   cmd_reduce;;
+	detach)   cmd_detach;;
+	log)      cmd_log;;
+	*) out "usage: nasresize {status|devices|expand <dev> [ext4|f2fs]|reduce|detach|log}"; exit 1;;
+esac
