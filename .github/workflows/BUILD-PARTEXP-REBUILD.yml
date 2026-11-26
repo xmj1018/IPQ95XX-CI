@@ -73,11 +73,28 @@ jobs:
           OUT="$WS/dist"; mkdir -p "$OUT"
           BASE="$WS/tools/partexp-official"
 
+          # 关键：post-install 必须重启 rpcd + 清 LuCI 缓存，否则 ubus 对象/ACL 不生效 => 页面 load error
+          make_post_install() {
+            ST="$1"
+            mkdir -p "$ST/scripts"
+            printf '%s\n' \
+              '#!/bin/sh' \
+              'chmod +x /usr/bin/partexp /usr/libexec/rpcd/partexp /usr/libexec/rpcd/partexp-plus 2>/dev/null || true' \
+              'rm -f /tmp/luci-indexcache* 2>/dev/null || true' \
+              'rm -rf /tmp/luci-modulecache 2>/dev/null || true' \
+              'killall -HUP rpcd 2>/dev/null || true' \
+              '/etc/init.d/rpcd restart >/dev/null 2>&1 || true' \
+              '/etc/init.d/uhttpd restart >/dev/null 2>&1 || true' \
+              'exit 0' > "$ST/scripts/post-install"
+            chmod 755 "$ST/scripts/post-install"
+          }
+
           mkpkg() {
             SD="$1"; NAME="$2"; VER="$3"; DESC="$4"
             ST="$WS/.stage-$NAME"; rm -rf "$ST"; mkdir -p "$ST/data"
             cp -af "$SD"/. "$ST/data/"
             chown -R 0:0 "$ST"
+            make_post_install "$ST"
             apk mkpkg --xattrs=no \
               --info "name:$NAME" \
               --info "version:$VER" \
@@ -85,6 +102,8 @@ jobs:
               --info "arch:noarch" \
               --info "license:Apache-2.0" \
               --info "origin:partexp-rebuild" \
+              --script "post-install:$ST/scripts/post-install" \
+              --script "post-upgrade:$ST/scripts/post-install" \
               --files "$ST/data" \
               --output "$OUT/${NAME}-${VER}.apk"
             echo "built $OUT/${NAME}-${VER}.apk"
@@ -105,16 +124,19 @@ jobs:
           cp "$P/view/partexp-plus.js" "$ST/data/www/luci-static/resources/view/partexp-plus.js"
           chmod 755 "$ST/data/usr/libexec/rpcd/partexp-plus"
           chown -R 0:0 "$ST"
+          make_post_install "$ST"
           apk mkpkg --xattrs=no \
             --info "name:luci-app-partexp-plus" \
-            --info "version:1.0-r1" \
+            --info "version:1.0.0-r1" \
             --info "description:分区扩容增强：撤销扩容/安全拔盘 + 减容" \
             --info "arch:noarch" \
             --info "license:Apache-2.0" \
             --info "origin:partexp-rebuild" \
+            --script "post-install:$ST/scripts/post-install" \
+            --script "post-upgrade:$ST/scripts/post-install" \
             --files "$ST/data" \
-            --output "$OUT/luci-app-partexp-plus-1.0-r1.apk"
-          echo "built $OUT/luci-app-partexp-plus-1.0-r1.apk"
+            --output "$OUT/luci-app-partexp-plus-1.0.0-r1.apk"
+          echo "built $OUT/luci-app-partexp-plus-1.0.0-r1.apk"
 
           for f in "$OUT"/*.apk; do echo -n "$(basename "$f"): "; od -An -c -N4 "$f"; done
 
