@@ -76,7 +76,9 @@ TAR_DIR="$WORK/unpack/$TAR_TOP"
 
 cp "$QS_SRC/bin/quickstart.amd64"  "$TAR_DIR/quickstart.x86_64"
 cp "$QS_SRC/bin/quickstart.arm64"  "$TAR_DIR/quickstart.aarch64"
-cp "$QS_SRC/bin/quickstart.arm"    "$TAR_DIR/quickstart.arm"
+# 官方 build-backend.sh 的 armv7 产物文件名是 quickstart.armv7，
+# 而 tarball/MANIFEST 里的目标名是 quickstart.arm —— 源名与目标名不同，别写错。
+cp "$QS_SRC/bin/quickstart.armv7"  "$TAR_DIR/quickstart.arm"
 chmod 755 "$TAR_DIR"/quickstart.*
 
 # MANIFEST：更新三个二进制 sha256 与 git_sha，其余 web 哈希保持（web 资源未变）
