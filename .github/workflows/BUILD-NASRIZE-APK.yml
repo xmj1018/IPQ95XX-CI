@@ -45,16 +45,15 @@ jobs:
             ST="$WS/.stage-$NAME"; rm -rf "$ST"; mkdir -p "$ST/data" "$ST/scripts"
             cp -af "$SD"/. "$ST/data/"
             chown -R 0:0 "$ST"
-            # 官方原包无脚本；留空 post 脚本仅清 LuCI 缓存（升级后需重载）
-            cat > "$ST/scripts/post-install" <<'EOF'
-            #!/bin/sh
-            rm -f /tmp/luci-indexcache* 2>/dev/null || true
-            rm -rf /tmp/luci-modulecache 2>/dev/null || true
-            killall -HUP rpcd 2>/dev/null || true
-            /etc/init.d/rpcd restart >/dev/null 2>&1 || true
-            /etc/init.d/uhttpd restart >/dev/null 2>&1 || true
-            exit 0
-            EOF
+            # 官方原包无脚本；post 脚本仅清 LuCI 缓存（升级后需重载）
+            printf '%s\n' \
+              '#!/bin/sh' \
+              'rm -f /tmp/luci-indexcache* 2>/dev/null || true' \
+              'rm -rf /tmp/luci-modulecache 2>/dev/null || true' \
+              'killall -HUP rpcd 2>/dev/null || true' \
+              '/etc/init.d/rpcd restart >/dev/null 2>&1 || true' \
+              '/etc/init.d/uhttpd restart >/dev/null 2>&1 || true' \
+              'exit 0' > "$ST/scripts/post-install"
             chmod 755 "$ST/scripts/post-install"
             apk mkpkg --xattrs=no \
               --info "name:$NAME" \
