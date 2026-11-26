@@ -1,0 +1,173 @@
+name: 分区扩容 全量重建 (官方原版 + 增强包)
+
+# 2026-11-26 重建说明：
+#   此前 APK 用的是缓存的【旧版】partexp（二进制 27992B、minified view），
+#   而固件内置的是 sirpdboy main 分支【当前版】（二进制 30405B、view 35623B）。
+#   旧版后端缺 get_overlay_src()，在部分机型上会导致目标硬盘读不出来。
+#   本 workflow 直接用 main 分支原文件重建，不再用任何缓存/自定义 view/ACL。
+#
+#  产物：
+#   1) luci-app-partexp           官方原版插件包（同名升级覆盖固件自带）
+#   2) luci-i18n-partexp-zh-cn    独立中文包(lmo)
+#   3) luci-app-partexp-plus      独立增强包：撤销扩容/安全拔盘 + 减容（菜单 order55）
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container:
+      image: alpine:edge
+    steps:
+      - name: Install tools
+        run: |
+          apk add --no-cache --upgrade apk-tools bash tar gzip curl
+          apk --version
+
+      - uses: actions/checkout@v4
+
+      - name: Verify apk >= 3.x
+        run: |
+          VER=$(apk --version | awk '{print $2}')
+          MAJOR=${VER%%.*}
+          [ "$MAJOR" -ge 3 ] || { echo "need apk-tools 3.x"; exit 1; }
+
+      - name: Fetch official partexp source (sirpdboy main, verify version)
+        run: |
+          set -eu
+          WS="$GITHUB_WORKSPACE"
+          SRC="https://raw.githubusercontent.com/sirpdboy/luci-app-partexp/main/luci-app-partexp"
+          DST="$WS/tools/partexp-official/app"
+          mkdir -p "$DST/etc/config" "$DST/etc/uci-defaults" \
+                   "$DST/usr/bin" "$DST/usr/libexec/rpcd" \
+                   "$DST/usr/share/luci/menu.d" "$DST/usr/share/rpcd/acl.d" \
+                   "$DST/www/luci-static/resources/view/partexp"
+
+          curl -fsSL "$SRC/root/usr/bin/partexp"                         -o "$DST/usr/bin/partexp"
+          curl -fsSL "$SRC/root/usr/libexec/rpcd/partexp"                -o "$DST/usr/libexec/rpcd/partexp"
+          curl -fsSL "$SRC/root/usr/share/luci/menu.d/luci-app-partexp.json" -o "$DST/usr/share/luci/menu.d/luci-app-partexp.json"
+          curl -fsSL "$SRC/root/usr/share/rpcd/acl.d/luci-app-partexp.json"  -o "$DST/usr/share/rpcd/acl.d/luci-app-partexp.json"
+          curl -fsSL "$SRC/root/etc/uci-defaults/zzz_luci-app-partexp"   -o "$DST/etc/uci-defaults/zzz_luci-app-partexp"
+          curl -fsSL "$SRC/root/etc/config/partexp"                      -o "$DST/etc/config/partexp"
+          curl -fsSL "$SRC/htdocs/luci-static/resources/view/partexp.js" -o "$DST/www/luci-static/resources/view/partexp.js"
+          curl -fsSL "$SRC/htdocs/luci-static/resources/view/partexp/partexp.js" -o "$DST/www/luci-static/resources/view/partexp/partexp.js"
+          curl -fsSL "$SRC/htdocs/luci-static/resources/view/partexp/manual.js"  -o "$DST/www/luci-static/resources/view/partexp/manual.js"
+
+          chmod 755 "$DST/usr/bin/partexp" "$DST/usr/libexec/rpcd/partexp" "$DST/etc/uci-defaults/zzz_luci-app-partexp"
+
+          # 断言：必须是新后端（含 get_overlay_src）和新 view（非 minified）
+          grep -q 'get_overlay_src()' "$DST/usr/bin/partexp"
+          [ "$(wc -c < "$DST/usr/bin/partexp")" -ge 30000 ]
+          [ "$(wc -c < "$DST/www/luci-static/resources/view/partexp.js")" -ge 30000 ]
+          grep -q '"order": 54' "$DST/usr/share/luci/menu.d/luci-app-partexp.json"
+          echo "official main source verified (binary $(wc -c < "$DST/usr/bin/partexp") bytes, view $(wc -c < "$DST/www/luci-static/resources/view/partexp.js") bytes)"
+
+      - name: Build three APKs
+        run: |
+          set -eu
+          WS="$GITHUB_WORKSPACE"
+          OUT="$WS/dist"; mkdir -p "$OUT"
+          BASE="$WS/tools/partexp-official"
+
+          mkpkg() {
+            SD="$1"; NAME="$2"; VER="$3"; DESC="$4"
+            ST="$WS/.stage-$NAME"; rm -rf "$ST"; mkdir -p "$ST/data"
+            cp -af "$SD"/. "$ST/data/"
+            chown -R 0:0 "$ST"
+            apk mkpkg --xattrs=no \
+              --info "name:$NAME" \
+              --info "version:$VER" \
+              --info "description:$DESC" \
+              --info "arch:noarch" \
+              --info "license:Apache-2.0" \
+              --info "origin:partexp-rebuild" \
+              --files "$ST/data" \
+              --output "$OUT/${NAME}-${VER}.apk"
+            echo "built $OUT/${NAME}-${VER}.apk"
+          }
+
+          # 官方原名 + 高于固件自带 2.0.5-r20260318 的版本 => 升级覆盖，不冲突
+          mkpkg "$BASE/app"   "luci-app-partexp"        "2.0.5-r20261126b" "LuCI Support for Automatic Partition Mount (official main source)"
+          mkpkg "$BASE/i18n"  "luci-i18n-partexp-zh-cn" "26.302.64833-r2"  "Translation for luci-app-partexp - 简体中文 (official lmo)"
+
+          # 独立增强包
+          P="$WS/tools/partexp-plus"
+          ST="$WS/.stage-partexp-plus"; rm -rf "$ST"; mkdir -p "$ST/data"
+          mkdir -p "$ST/data/usr/libexec/rpcd" "$ST/data/usr/share/luci/menu.d" \
+                   "$ST/data/usr/share/rpcd/acl.d" "$ST/data/www/luci-static/resources/view"
+          cp "$P/rpcd/partexp-plus" "$ST/data/usr/libexec/rpcd/partexp-plus"
+          cp "$P/menu/luci-app-partexp-plus.json" "$ST/data/usr/share/luci/menu.d/luci-app-partexp-plus.json"
+          cp "$P/acl/luci-app-partexp-plus.json" "$ST/data/usr/share/rpcd/acl.d/luci-app-partexp-plus.json"
+          cp "$P/view/partexp-plus.js" "$ST/data/www/luci-static/resources/view/partexp-plus.js"
+          chmod 755 "$ST/data/usr/libexec/rpcd/partexp-plus"
+          chown -R 0:0 "$ST"
+          apk mkpkg --xattrs=no \
+            --info "name:luci-app-partexp-plus" \
+            --info "version:1.0-r1" \
+            --info "description:分区扩容增强：撤销扩容/安全拔盘 + 减容" \
+            --info "arch:noarch" \
+            --info "license:Apache-2.0" \
+            --info "origin:partexp-rebuild" \
+            --files "$ST/data" \
+            --output "$OUT/luci-app-partexp-plus-1.0-r1.apk"
+          echo "built $OUT/luci-app-partexp-plus-1.0-r1.apk"
+
+          for f in "$OUT"/*.apk; do echo -n "$(basename "$f"): "; od -An -c -N4 "$f"; done
+
+      - name: Verify real install + content asserts
+        run: |
+          set -eu
+          WS="$GITHUB_WORKSPACE"
+          APP=$(ls "$WS"/dist/luci-app-partexp-2.0.5-*.apk)
+          I18=$(ls "$WS"/dist/luci-i18n-partexp-zh-cn-*.apk)
+          PLUS=$(ls "$WS"/dist/luci-app-partexp-plus-*.apk)
+
+          rm -rf /tmp/apkroot; mkdir -p /tmp/apkroot/tmp
+          apk add --root /tmp/apkroot --initdb --no-scripts --allow-untrusted "$APP" "$I18" "$PLUS"
+
+          echo "=== 官方原版断言 ==="
+          grep -q 'get_overlay_src()' /tmp/apkroot/usr/bin/partexp
+          grep -q 'get_devices' /tmp/apkroot/usr/libexec/rpcd/partexp
+          grep -q '"order": 54' /tmp/apkroot/usr/share/luci/menu.d/luci-app-partexp.json
+          grep -q '"get_devices"' /tmp/apkroot/usr/share/rpcd/acl.d/luci-app-partexp.json
+          [ "$(wc -c < /tmp/apkroot/www/luci-static/resources/view/partexp.js)" -ge 30000 ]
+          [ -f /tmp/apkroot/usr/lib/lua/luci/i18n/partexp.zh-cn.lmo ]
+
+          echo "=== 增强包断言 ==="
+          grep -q 'list_disks' /tmp/apkroot/usr/libexec/rpcd/partexp-plus
+          grep -q '"order": 55' /tmp/apkroot/usr/share/luci/menu.d/luci-app-partexp-plus.json
+          [ -f /tmp/apkroot/www/luci-static/resources/view/partexp-plus.js ]
+
+          echo "=== 无旧自定义残留 ==="
+          [ ! -f /tmp/apkroot/usr/share/luci/menu.d/luci-app-nasresize.json ]
+          [ ! -f /tmp/apkroot/usr/sbin/nasresize ]
+
+          echo "INSTALL + CONTENT VERIFY PASS"
+          find /tmp/apkroot -type f | sort
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          set -eu
+          TAG="partexp-rebuild"
+          API="https://api.github.com/repos/$GITHUB_REPOSITORY"
+          AUTH="Authorization: Bearer $GH_TOKEN"
+          JSONH="Accept: application/vnd.github+json"
+          curl -s -X DELETE -H "$AUTH" -H "$JSONH" "$API/releases/tags/$TAG" >/dev/null || true
+          curl -s -X DELETE -H "$AUTH" -H "$JSONH" "$API/git/refs/tags/$TAG" >/dev/null || true
+          REL=$(curl -s -X POST -H "$AUTH" -H "$JSONH" -H "Content-Type: application/json" "$API/releases" \
+            -d "{\"tag_name\":\"$TAG\",\"name\":\"分区扩容 全量重建（官方原版 + 增强包）\",\"body\":\"官方 sirpdboy main 原文件重建，修复旧缓存后端读不到目标硬盘；含官方插件包 + 独立中文包 + 独立增强包（撤销扩容/安全拔盘、减容）。\",\"target_commitish\":\"$GITHUB_SHA\",\"draft\":false,\"prerelease\":false}")
+          UPLOAD_URL=$(printf '%s' "$REL" | sed -n 's/.*"upload_url": "\([^"]*\)".*/\1/p' | sed 's/{?name,label}//')
+          [ -n "$UPLOAD_URL" ] || { echo "release 失败: $REL"; exit 1; }
+          for f in "$GITHUB_WORKSPACE"/dist/*.apk; do
+            curl -s -X POST -H "$AUTH" -H "Content-Type: application/vnd.alpine.linux.apk" \
+                 --data-binary "@$f" "$UPLOAD_URL?name=$(basename "$f")" >/dev/null
+            echo "uploaded $(basename "$f")"
+          done
+          curl -s -H "$AUTH" -H "$JSONH" "$API/releases/tags/$TAG" | grep -oE '"browser_download_url": "[^"]+\.apk"'

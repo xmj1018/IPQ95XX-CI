@@ -1,0 +1,16 @@
+{
+    "luci-app-partexp-plus": {
+        "description": "Grant access for luci-app-partexp-plus",
+        "read": {
+            "ubus": {
+                "partexp-plus": ["list_disks", "get_log", "get_status"]
+            }
+        },
+        "write": {
+            "ubus": {
+                "partexp-plus": ["expand", "undo", "shrink"],
+                "file": ["write"]
+            }
+        }
+    }
+}

@@ -1,0 +1,14 @@
+{
+    "admin/system/partexp-plus": {
+        "title": "分区扩容增强",
+        "order": 55,
+        "action": {
+            "type": "view",
+            "path": "partexp-plus"
+        },
+        "acl": ["luci-app-partexp-plus"],
+        "depends": {
+            "acl": ["luci-app-partexp-plus"]
+        }
+    }
+}

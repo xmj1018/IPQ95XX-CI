@@ -1,0 +1,180 @@
+#!/bin/sh
+# partexp-plus - 分区扩容增强后端
+# 只做三件事：列出磁盘 / 撤销扩容(安全拔盘) / 减容(高级)
+# 扩容本身直接调用官方 /usr/bin/partexp，不重复造轮子。
+. /usr/share/libubox/jshn.sh
+
+LOG=/tmp/partexp-plus.log
+LOCK=/var/run/partexp-plus.lock
+
+disk_patterns="^sd[a-z]$|^mmcblk[0-9]+$|^nvme[0-9]+n[0-9]+$|^vd[a-z]$|^xvd[a-z]$|^ubd[a-z]+$"
+
+is_target_disk() {
+    echo "$1" | grep -qE "$disk_patterns"
+}
+
+dev_used_by_overlay() {
+    local dev="$1"
+    [ -e "/proc/mounts" ] || return 1
+    grep -q "/dev/${dev}[0-9]* .* /overlay " /proc/mounts 2>/dev/null && return 0
+    grep -q "/dev/${dev}[0-9]* .* / " /proc/mounts 2>/dev/null && return 0
+    return 1
+}
+
+list_disks() {
+    json_init
+    json_add_array "disks"
+    for devpath in /sys/class/block/*; do
+        [ -e "$devpath" ] || continue
+        name=$(basename "$devpath")
+        is_target_disk "$name" || continue
+        [ -f "$devpath/partition" ] && continue
+
+        size_mb=0
+        [ -f "$devpath/size" ] && size_mb=$(( $(cat "$devpath/size" 2>/dev/null) / 2048 ))
+        model="unknown"
+        [ -r "$devpath/device/model" ] && model=$(tr -d '\n' < "$devpath/device/model" 2>/dev/null)
+        [ -n "$model" ] || model="unknown"
+
+        # 已挂载分区列表
+        mounted=""
+        for p in /dev/${name}[0-9]*; do
+            [ -b "$p" ] || continue
+            mp=$(awk -v d="$p" '$1==d {print $2; exit}' /proc/mounts 2>/dev/null)
+            [ -n "$mp" ] && mounted="$mounted ${p##*/}->$mp"
+        done
+        [ -n "$mounted" ] || mounted="(none)"
+
+        overlay=0
+        dev_used_by_overlay "$name" && overlay=1
+
+        json_add_object
+        json_add_string "name" "$name"
+        json_add_string "dev" "/dev/$name"
+        json_add_int "size" "$size_mb"
+        json_add_string "model" "$model"
+        json_add_string "mounted" "$mounted"
+        json_add_int "overlay" "$overlay"
+        json_close_object
+    done
+    json_close_array
+    json_dump
+}
+
+log_msg() {
+    echo "[$(date '+%H:%M:%S')] $*" >> "$LOG"
+}
+
+case "$1" in
+    list)
+        echo '{
+            "list_disks": { "description": "List candidate disks" },
+            "expand": { "description": "Run official partexp expansion", "arguments": { "disk": "string" } },
+            "undo": { "description": "Undo extroot and unmount disk (keep data)", "arguments": { "disk": "string" } },
+            "shrink": { "description": "Shrink last partition (advanced)", "arguments": { "disk": "string", "size_mb": "string" } },
+            "get_log": { "description": "Read operation log" },
+            "get_status": { "description": "Operation status" }
+        }'
+        ;;
+    call)
+        case "$2" in
+            list_disks)
+                list_disks
+                ;;
+            get_status)
+                json_init
+                if [ -f "$LOCK" ]; then json_add_boolean "running" 1
+                else json_add_boolean "running" 0; fi
+                json_dump
+                ;;
+            get_log)
+                if [ -f "$LOG" ]; then
+                    json_init; json_add_string "log" "$(tail -c 8000 "$LOG" 2>/dev/null)"; json_dump
+                else
+                    echo '{"log":""}'
+                fi
+                ;;
+            expand)
+                read input
+                json_load "$input"; json_get_var disk disk
+                [ -n "$disk" ] || { echo '{"error":"未选择磁盘"}'; return 1; }
+                is_target_disk "$disk" || { echo '{"error":"磁盘名不合法"}'; return 1; }
+                [ -x /usr/bin/partexp ] || { echo '{"error":"官方 partexp 未安装"}'; return 1; }
+                : > "$LOG"
+                log_msg "调用官方 partexp 扩容: $disk"
+                # 先把目标盘写进官方配置，否则官方 autopart 读不到目标
+                uci -q set partexp.global.target_disk="$disk" 2>/dev/null || true
+                uci -q commit partexp 2>/dev/null || true
+                ( touch "$LOCK"; /usr/bin/partexp autopart >> "$LOG" 2>&1; rm -f "$LOCK"; log_msg "扩容结束" ) &
+                echo '{"success":true,"message":"已启动扩容，请查看日志"}'
+                ;;
+            undo)
+                read input
+                json_load "$input"; json_get_var disk disk
+                [ -n "$disk" ] || { echo '{"error":"未选择磁盘"}'; return 1; }
+                is_target_disk "$disk" || { echo '{"error":"磁盘名不合法"}'; return 1; }
+                : > "$LOG"
+                log_msg "撤销扩容 / 安全拔盘: /dev/$disk"
+                # 仅移除 fstab 中指向该盘的挂载项，不删数据
+                if [ -f /etc/config/fstab ]; then
+                    for s in $(uci -q show fstab 2>/dev/null | grep -E "\.device='/dev/${disk}[0-9]*'" | sed -E "s/^fstab\.([^.]+)\.device=.*/\1/"); do
+                        log_msg "删除 fstab 段 $s"
+                        uci -q delete "fstab.$s"
+                    done
+                    uci -q commit fstab 2>/dev/null || true
+                fi
+                # 卸载该盘所有已挂载分区
+                for p in /dev/${disk}[0-9]*; do
+                    [ -b "$p" ] || continue
+                    log_msg "umount $p"
+                    umount "$p" 2>/dev/null || umount -l "$p" 2>/dev/null || true
+                done
+                log_msg "已撤销配置并卸载；数据仍保留在 /dev/$disk，可安全拔盘"
+                log_msg "建议重启一次让 /overlay 回到内置闪存"
+                echo '{"success":true,"message":"已撤销挂载配置并卸载，建议重启"}'
+                ;;
+            shrink)
+                read input
+                json_load "$input"; json_get_var disk disk; json_get_var size_mb size_mb
+                [ -n "$disk" ] && is_target_disk "$disk" || { echo '{"error":"磁盘名不合法"}'; return 1; }
+                [ -n "$size_mb" ] && echo "$size_mb" | grep -qE '^[0-9]+$' || { echo '{"error":"目标大小必须是整数 MB"}'; return 1; }
+                [ "$size_mb" -ge 64 ] || { echo '{"error":"目标大小至少 64MB"}'; return 1; }
+                command -v resize2fs >/dev/null || { echo '{"error":"缺少 resize2fs"}'; return 1; }
+                command -v parted >/dev/null || { echo '{"error":"缺少 parted"}'; return 1; }
+                : > "$LOG"
+                log_msg "减容 /dev/$disk 最后一个分区 -> ${size_mb}MB（危险操作）"
+                # 找最后一个分区号
+                last=""
+                for p in /dev/${disk}[0-9]*; do
+                    [ -b "$p" ] || continue
+                    n=$(echo "${p##*${disk}}")
+                    [ -n "$n" ] && last=$n
+                done
+                [ -n "$last" ] || { echo '{"error":"未找到分区"}'; return 1; }
+                part=/dev/${disk}${last}
+                log_msg "目标分区 $part"
+                umount "$part" 2>/dev/null || umount -l "$part" 2>/dev/null || true
+                e2fsck -fy "$part" >> "$LOG" 2>&1 || true
+                resize2fs "$part" "${size_mb}M" >> "$LOG" 2>&1 || {
+                    log_msg "resize2fs 失败，未改动分区表"; echo '{"error":"resize2fs 失败，请查看日志"}'; return 1;
+                }
+                # 分区结束位置 = 起始 + 目标大小
+                start=$(cat /sys/class/block/${disk}${last}/start 2>/dev/null)
+                if [ -n "$start" ]; then
+                    end=$(( start * 512 / 1024 / 1024 + size_mb ))
+                    parted -s "/dev/$disk" resizepart "$last" "${end}MB" >> "$LOG" 2>&1 || {
+                        log_msg "parted resizepart 失败，但文件系统已缩小"; echo '{"error":"分区表调整失败，请查看日志"}'; return 1;
+                    }
+                fi
+                log_msg "减容完成"
+                echo '{"success":true,"message":"减容完成，建议重启"}'
+                ;;
+            *)
+                echo '{"error":"未知方法"}'
+                ;;
+        esac
+        ;;
+    *)
+        echo '{"error":"Invalid action"}'
+        ;;
+esac
