@@ -121,9 +121,19 @@ jobs:
           echo "=== 真实安装到隔离 root (工具本身判定包是否合法) ==="
           rm -rf /tmp/apkroot; mkdir -p /tmp/apkroot
           apk add --root /tmp/apkroot --initdb --no-scripts --allow-untrusted "$APK"
-          echo "=== 安装后文件核对 ==="
-          find /tmp/apkroot -name 'nasresize' -o -name 'luci-app-nasresize.json' -o -name '99-nasresize' | sort
-          echo "INSTALL TEST PASS: 包可被 apk v3 正常安装"
+          echo "=== 安装后文件核对（完整清单）==="
+          find /tmp/apkroot -type f | sort
+          echo "=== 关键文件断言 ==="
+          for f in \
+            /tmp/apkroot/usr/sbin/nasresize \
+            /tmp/apkroot/usr/share/luci/menu.d/luci-app-nasresize.json \
+            /tmp/apkroot/usr/share/rpcd/acl.d/luci-app-nasresize.json \
+            /tmp/apkroot/www/luci-static/resources/view/nasresize/index.js \
+            /tmp/apkroot/etc/config/nasresize \
+            /tmp/apkroot/etc/uci-defaults/99-nasresize; do
+            if [ -f "$f" ]; then echo "OK   $f"; else echo "MISS $f"; exit 1; fi
+          done
+          echo "INSTALL TEST PASS: 包可被 apk v3 正常安装且 6 个文件齐全"
 
       - name: Publish release asset (GitHub REST API)
         env:
