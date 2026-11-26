@@ -90,24 +90,19 @@ jobs:
           ./scripts/feeds install honk luci-app-honk
           ./scripts/feeds install luci-app-store luci-app-istorex luci-app-quickstart quickstart taskd luci-lib-taskd luci-lib-xterm
           # ★修复 luci-app-quickstart r3 首页"暂时无法读取路由器配置"：
-          #   kenzok8/官方 r3 把 istore_backend.lua 的 session_retrieve(sid, nil)
-          #   改成 session_retrieve(sid, {"root"})，登录态校验失败 → 首页读不到配置。
-          #   幂等改回 nil；上游作者修好后会自动跳过。
-          #   注意：只在 feeds/ 真实文件上打补丁，别碰 package/feeds/ 下的软链
-          #   （sed -i 作用在软链上会替换软链本身，导致包丢失）。
+          #   根因：r3 backend 只连 unix socket http.sock，但官方 release 二进制
+          #   只监听 TCP 3038、不创建 http.sock → 前后端错配读不到配置。
+          #   用仓库修复版整体覆盖：session 回 nil + 连接双保险(先 http.sock 后 TCP 3038)。
+          #   注意：只在 feeds/ 真实文件上覆盖，别碰 package/feeds/ 下的软链
+          #   （覆盖软链会替换软链本身导致包丢失）。
           QS_BE=$(find feeds -path '*/luci-app-quickstart/luasrc/controller/istore_backend.lua' 2>/dev/null | head -1)
-          if [ -n "$QS_BE" ] && [ -f "$QS_BE" ]; then
+          QS_PATCH="$GITHUB_WORKSPACE/patches/istore_backend.fixed.lua"
+          if [ -n "$QS_BE" ] && [ -f "$QS_BE" ] && [ -f "$QS_PATCH" ]; then
             echo "patching $QS_BE"
-            if grep -q 'session_retrieve(sid, {"root"})' "$QS_BE"; then
-              sed -i 's/session_retrieve(sid, {"root"})/session_retrieve(sid, nil)/g' "$QS_BE"
-              echo "OK: quickstart r3 session_retrieve root -> nil"
-            elif grep -q 'session_retrieve(sid, nil)' "$QS_BE"; then
-              echo "OK: quickstart backend already uses nil, skip patch"
-            else
-              echo "WARN: istore_backend.lua session_retrieve form unknown, check manually"
-            fi
+            cp -af "$QS_PATCH" "$QS_BE"
+            echo "OK: quickstart backend -> fixed dual-socket version"
           else
-            echo "WARN: istore_backend.lua not found in feeds/, skip patch"
+            echo "WARN: QS_BE=$QS_BE QS_PATCH=$QS_PATCH, skip patch"
           fi
           # ★Argon 主题：直接 clone 作者官方仓库（jerrykuku）master，编最新版 3.2.0。
           #   按作者 DEVELOPMENT.md 的官方做法，不用任何第三方 feed 的旧版/魔改版。

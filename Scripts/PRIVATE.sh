@@ -41,22 +41,20 @@ copy_istore_pkg "$ISTORE_LUCI/luci/luci-lib-xterm"                luci-lib-xterm
 rm -rf "$ISTORE_HUB" "$ISTORE_LUCI"
 
 # ── 修复 luci-app-quickstart r3 首页"暂时无法读取路由器配置" ──
-# 官方 istoreos-app-hub 当前 luci-app-quickstart 就是 0.17.1-rc20261028-r3，
-# 其 istore_backend.lua 把 session_retrieve(sid, nil) 改成 session_retrieve(sid, {"root"})，
-# 导致登录 session 校验失败，首页 quickstart 前端读后端配置返回 unavailable
-# （"暂时无法读取路由器配置，正在临时展示内置首页"）。
-# 用户 11-23 正常固件用的是 r2（session_retrieve(sid, nil)）。
-# 这里保留官方最新 r3 包，只把这一行改回 r2 行为；幂等，作者上游修好后会自动跳过。
+# 根因（2026-11-26 查实）：官方 r3 的 istore_backend.lua 改成只连 unix socket
+# /var/run/quickstart/http.sock，但官方 r3 包里的 quickstart 二进制
+# (v0.17.1-rc20261028, md5 c446b388305b4671d89a3ac5aebda705) 只监听 TCP 3038、
+# 不创建 http.sock → 前后端错配，前端读不到配置、首页报"暂时无法读取"。
+# 修复：用 11-23「能用」固件里逐字节提取的 istore_backend.lua（纯 TCP 3038、
+# session_retrieve(sid,nil)，md5 864c52ed…）整体覆盖官方 r3 版。
+# 这是真机验证过能正常读取配置的原版代码，不自己拼 socket 逻辑，确保首页不再坏。
 QSBACKEND="./package/luci-app-quickstart/luasrc/controller/istore_backend.lua"
-if [ -f "$QSBACKEND" ]; then
-  if grep -q 'session_retrieve(sid, {"root"})' "$QSBACKEND"; then
-    sed -i 's/session_retrieve(sid, {"root"})/session_retrieve(sid, nil)/g' "$QSBACKEND"
-    echo "quickstart r3 patch: session_retrieve root -> nil (fix homepage unavailable)"
-  elif grep -q 'session_retrieve(sid, nil)' "$QSBACKEND"; then
-    echo "quickstart backend already uses session_retrieve(sid, nil), skip patch"
-  else
-    echo "WARN: quickstart istore_backend.lua session_retrieve form unknown, check manually"
-  fi
+QSPATCH="$GITHUB_WORKSPACE/patches/istore_backend.fixed.lua"
+if [ -f "$QSBACKEND" ] && [ -f "$QSPATCH" ]; then
+  cp -af "$QSPATCH" "$QSBACKEND"
+  echo "quickstart patch: istore_backend.lua -> 11-23 working original (pure TCP 3038, md5 864c52ed…)"
+elif [ ! -f "$QSPATCH" ]; then
+  echo "WARN: patches/istore_backend.fixed.lua not found, quickstart patch skipped"
 else
   echo "WARN: luci-app-quickstart istore_backend.lua not found at $QSBACKEND, skip patch"
 fi
@@ -148,6 +146,27 @@ ARGON_WHITE_TEXT_EOF
     echo "Argon uci-defaults transparency: $(grep -m1 '^transparency ' "$ARGON_DEFAULT")"
   fi
 
+  # ── 风扇/RGB 机型隔离：这套 sbe1v1k 大界面只属于 SBE1V1K ──
+  # user-files 两个机型共用，但风扇控制/RGB 状态灯是 SBE1V1K 专属
+  # （pwm-fan + 三色 PWM LED）。万兆 BE10000 是 emc2305/xiaomi-control，
+  # 绝不能带这套菜单/守护/脚本，否则万兆会出现无用的「风扇控制/RGB 状态灯」。
+  # 在 overlay 之后按 WRT_NAME 删除万兆里的这一整套（构建期删，不依赖开机脚本）。
+  if [ "${WRT_NAME:-}" = "BE10000" ]; then
+    rm -f \
+      ./files/usr/share/luci/menu.d/luci-app-sbe1v1k.json \
+      ./files/usr/share/rpcd/acl.d/luci-app-sbe1v1k.json \
+      ./files/www/luci-static/resources/view/sbe1v1k/fan.js \
+      ./files/www/luci-static/resources/view/sbe1v1k/led.js \
+      ./files/etc/init.d/fanctl ./files/etc/init.d/ledctl \
+      ./files/etc/config/fan ./files/etc/config/led \
+      ./files/usr/sbin/fanctl ./files/usr/sbin/ledctl \
+      ./files/usr/lib/sbe1v1k/fanctl ./files/usr/lib/sbe1v1k/ledctl \
+      ./files/usr/lib/sbe1v1k/init.fanctl ./files/usr/lib/sbe1v1k/init.ledctl \
+      ./files/usr/lib/sbe1v1k/config.fan ./files/usr/lib/sbe1v1k/config.led \
+      ./files/etc/uci-defaults/99-hwctrl-enable 2>/dev/null || :
+    echo "BE10000: removed SBE1V1K fan/RGB files from ./files (not for this board)"
+  fi
+
   chmod 755 \
     ./files/etc/uci-defaults/* \
     ./files/etc/init.d/* \
@@ -158,10 +177,9 @@ ARGON_WHITE_TEXT_EOF
   chmod 644 ./files/usr/lib/lua/luci/controller/route_tool.lua 2>/dev/null || :
   # SBE1V1K 风扇/RGB 守护：git core.filemode=false，checkout 后是 644，
   # init.d 用 `command /usr/sbin/fanctl|ledctl` 直接执行，必须在这里补 +x，
-  # 否则固件里守护起不来（表现为「没驱动/不能用」）。两机型共用 user-files，
-  # 万兆机型开机由 99-hwctrl-enable 删除这几套，不受影响。
+  # 否则固件里守护起不来（表现为「没驱动/不能用」）。
   ls -l ./files/usr/sbin/fanctl ./files/usr/sbin/ledctl 2>/dev/null || :
-  echo "SBE1V1K user-files overlaid: $(find ./files -type f | wc -l) files"
+  echo "${WRT_NAME:-?} user-files overlaid: $(find ./files -type f | wc -l) files"
 else
   echo "WARN: user-files not found, skip overlay"
 fi
