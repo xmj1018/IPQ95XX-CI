@@ -79,31 +79,45 @@ jobs:
         run: |
           cd wrt
           echo "src-git honk https://github.com/kenzok8/openwrt-honk.git" >> feeds.conf
-          echo "src-git kenzok8 https://github.com/kenzok8/openwrt-packages.git" >> feeds.conf
           echo "src-git partexp https://github.com/sirpdboy/luci-app-partexp.git" >> feeds.conf
           echo "src-git diskman https://github.com/sbwml/luci-app-diskman.git" >> feeds.conf
           # OpenClash 用官方 luci feed 自带的版本（0.48.002，随 feeds install -a 就位），
           # 不另加 vernesong dev 源 —— 依赖更少更稳，与"刷新软件源能装"一致
-          ./scripts/feeds update honk kenzok8 partexp diskman
-          # 额外 feed 只装用到的包：kenzok8 里几百个包若全量 install，
-          # 会和默认 feed 重名互相覆盖，带来不可控风险
+          # ★iStoreOS 风格插件：2026-11-27 起全部改用项目作者官方源（istoreos），
+          #   不再用 kenzok8 中间打包仓（lgz/滞后）。与 SBE1V1K/BE10000 的 PRIVATE.sh 完全一致，
+          #   clone 官方 main 分支，每次编译拉最新。
+          ./scripts/feeds update honk partexp diskman
           ./scripts/feeds install honk luci-app-honk
-          ./scripts/feeds install luci-app-store luci-app-istorex luci-app-quickstart quickstart taskd luci-lib-taskd luci-lib-xterm
-          # ★修复 luci-app-quickstart r3 首页"暂时无法读取路由器配置"：
-          #   根因：r3 backend 只连 unix socket http.sock，但官方 release 二进制
-          #   只监听 TCP 3038、不创建 http.sock → 前后端错配读不到配置。
-          #   用仓库修复版整体覆盖：session 回 nil + 连接双保险(先 http.sock 后 TCP 3038)。
-          #   注意：只在 feeds/ 真实文件上覆盖，别碰 package/feeds/ 下的软链
-          #   （覆盖软链会替换软链本身导致包丢失）。
-          QS_BE=$(find feeds -path '*/luci-app-quickstart/luasrc/controller/istore_backend.lua' 2>/dev/null | head -1)
-          QS_PATCH="$GITHUB_WORKSPACE/patches/istore_backend.fixed.lua"
-          if [ -n "$QS_BE" ] && [ -f "$QS_BE" ] && [ -f "$QS_PATCH" ]; then
-            echo "patching $QS_BE"
-            cp -af "$QS_PATCH" "$QS_BE"
-            echo "OK: quickstart backend -> fixed dual-socket version"
-          else
-            echo "WARN: QS_BE=$QS_BE QS_PATCH=$QS_PATCH, skip patch"
-          fi
+          ISTORE_HUB="./package/_istoreos-app-hub"
+          ISTORE_LUCI="./package/_istoreos-luci"
+          rm -rf "$ISTORE_HUB" "$ISTORE_LUCI"
+          git clone --depth=1 --single-branch --branch main "https://github.com/istoreos/istoreos-app-hub.git" "$ISTORE_HUB"
+          git clone --depth=1 --single-branch --branch main "https://github.com/istoreos/istore.git" "$ISTORE_LUCI"
+          # 删除 feeds 里可能存在的同名包，避免与官方源冲突
+          for PKG in quickstart luci-app-quickstart luci-app-istorex luci-app-store taskd luci-lib-taskd luci-lib-xterm; do
+            find ./feeds/luci/ ./feeds/packages/ -maxdepth 4 -type d -iname "*$PKG*" -exec rm -rf {} + 2>/dev/null || :
+          done
+          copy_istore_pkg() {
+            local src="$1" name="$2"
+            [ -d "$src" ] || { echo "WARN: 官方包源不存在: $src"; return 1; }
+            rm -rf "./package/$name"
+            cp -af "$src" "./package/$name"
+          }
+          copy_istore_pkg "$ISTORE_HUB/apps/quickstart/quickstart"          quickstart
+          copy_istore_pkg "$ISTORE_HUB/apps/quickstart/luci-app-quickstart" luci-app-quickstart
+          copy_istore_pkg "$ISTORE_HUB/apps/istorex/luci-app-istorex"       luci-app-istorex
+          copy_istore_pkg "$ISTORE_LUCI/luci/luci-app-store"                luci-app-store
+          copy_istore_pkg "$ISTORE_LUCI/luci/taskd"                         taskd
+          copy_istore_pkg "$ISTORE_LUCI/luci/luci-lib-taskd"                luci-lib-taskd
+          copy_istore_pkg "$ISTORE_LUCI/luci/luci-lib-xterm"                luci-lib-xterm
+          rm -rf "$ISTORE_HUB" "$ISTORE_LUCI"
+          # ★iStoreOS 首页：对齐官方、从源码编译配套二进制（2026-11-27 定案）
+          #   官方 11-25 已修源码（后端 serve 默认绑定 http.sock），但没重发二进制 release；
+          #   app-hub 打包用的还是只听 TCP 3038 的旧二进制 → 前后端错配。
+          #   不再打 backend 补丁，改为从官方源码现编新二进制（前后端同一版、天然配套）。
+          #   当前目录是 wrt/（OpenWrt 源码树），传 "."。
+          bash "$GITHUB_WORKSPACE/Scripts/build-quickstart-source.sh" "."
+          ls -l ./dl/quickstart-binary-*.tar.gz 2>/dev/null || echo "WARN: 未找到重打的 quickstart tarball"
           # ★Argon 主题：直接 clone 作者官方仓库（jerrykuku）master，编最新版 3.2.0。
           #   按作者 DEVELOPMENT.md 的官方做法，不用任何第三方 feed 的旧版/魔改版。
           #   先删 install -a 拉进来的软链，避免同名包冲突。
@@ -177,8 +191,8 @@ jobs:
             -exec sed -i 's/luci-theme-bootstrap/luci-theme-argon/g' {} +
           grep -rn "luci-theme" feeds/luci/collections/*/Makefile || true
           echo "=== 关键包是否就位 ==="
-          for p in luci-base sqlite3-cli v2ray-geoip v2ray-geosite kmod-sched-bpf kmod-crypto-hw-eip93 honk luci-app-honk luci-app-store luci-app-istorex luci-app-quickstart luci-i18n-quickstart-zh-cn quickstart taskd xz-utils tar; do
-            if ls -d package/feeds/*/"$p" >/dev/null 2>&1; then echo "OK      $p"; else echo "MISSING $p"; fi
+          for p in luci-base sqlite3-cli v2ray-geoip v2ray-geosite kmod-sched-bpf kmod-crypto-hw-eip93 honk luci-app-honk luci-app-store luci-app-istorex luci-app-quickstart quickstart taskd xz-utils tar; do
+            if ls -d package/feeds/*/"$p" >/dev/null 2>&1 || ls -d package/"$p" >/dev/null 2>&1; then echo "OK      $p"; else echo "MISSING $p"; fi
           done
           # argon 是 clone 到 package/ 根下的官方仓库，单独确认
           [ -f package/luci-theme-argon/Makefile ] && echo "OK      luci-theme-argon (官方 clone $(grep -m1 '^PKG_VERSION' package/luci-theme-argon/Makefile))" || echo "MISSING luci-theme-argon"
@@ -249,7 +263,7 @@ jobs:
           echo "=== 关键配置确认 ==="
           grep -E "DEVICE_fiberhome_hg5585f-ct=|DEBUG_INFO_BTF|PACKAGE_honk=|luci-app-honk=|luci-theme-argon=|crypto-hw-eip93=" .config || true
           echo "=== 增量包是否全部生效（被丢弃的会显示 MISSING）==="
-          for p in honk luci-app-honk luci-app-store luci-app-istorex luci-app-quickstart luci-i18n-quickstart-zh-cn luci-i18n-argon-config-zh-cn quickstart taskd luci-lib-taskd luci-lib-xterm xz-utils tar libuci-lua mount-utils luci-theme-argon kmod-crypto-hw-eip93 zram-swap kmod-zram v2ray-geoip v2ray-geosite kmod-sched-bpf kmod-nft-queue; do
+          for p in honk luci-app-honk luci-app-store luci-app-istorex luci-app-quickstart quickstart taskd luci-lib-taskd luci-lib-xterm xz-utils tar libuci-lua mount-utils luci-theme-argon kmod-crypto-hw-eip93 zram-swap kmod-zram v2ray-geoip v2ray-geosite kmod-sched-bpf kmod-nft-queue; do
             if grep -q "^CONFIG_PACKAGE_${p}=y" .config; then echo "OK   ${p}"; else echo "MISSING ${p}"; fi
           done
 

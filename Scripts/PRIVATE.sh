@@ -40,24 +40,25 @@ copy_istore_pkg "$ISTORE_LUCI/luci/luci-lib-taskd"                luci-lib-taskd
 copy_istore_pkg "$ISTORE_LUCI/luci/luci-lib-xterm"                luci-lib-xterm
 rm -rf "$ISTORE_HUB" "$ISTORE_LUCI"
 
-# ── 修复 luci-app-quickstart r3 首页"暂时无法读取路由器配置" ──
-# 根因（2026-11-26 查实）：官方 r3 的 istore_backend.lua 改成只连 unix socket
-# /var/run/quickstart/http.sock，但官方 r3 包里的 quickstart 二进制
-# (v0.17.1-rc20261028, md5 c446b388305b4671d89a3ac5aebda705) 只监听 TCP 3038、
-# 不创建 http.sock → 前后端错配，前端读不到配置、首页报"暂时无法读取"。
-# 修复：用 11-23「能用」固件里逐字节提取的 istore_backend.lua（纯 TCP 3038、
-# session_retrieve(sid,nil)，md5 864c52ed…）整体覆盖官方 r3 版。
-# 这是真机验证过能正常读取配置的原版代码，不自己拼 socket 逻辑，确保首页不再坏。
-QSBACKEND="./package/luci-app-quickstart/luasrc/controller/istore_backend.lua"
-QSPATCH="$GITHUB_WORKSPACE/patches/istore_backend.fixed.lua"
-if [ -f "$QSBACKEND" ] && [ -f "$QSPATCH" ]; then
-  cp -af "$QSPATCH" "$QSBACKEND"
-  echo "quickstart patch: istore_backend.lua -> 11-23 working original (pure TCP 3038, md5 864c52ed…)"
-elif [ ! -f "$QSPATCH" ]; then
-  echo "WARN: patches/istore_backend.fixed.lua not found, quickstart patch skipped"
+# ── iStoreOS 首页：对齐官方、从源码编译配套二进制（2026-11-27 定案） ──
+# 根因（已查实）：官方 r3 前端连 unix socket /var/run/quickstart/http.sock，
+# 但 app-hub 打包用的 quickstart 二进制是官方 release 11-12 的旧预编译包
+# (v0.17.1-rc20261028，只监听 TCP 3038、不建 http.sock) → 前后端错配、首页读不到配置。
+# 官方自己在 11-25 已修源码（commit e3a79b6b，后端 serve 默认绑定 --http-unix http.sock），
+# 只是没重发二进制 release。所以不再打 backend 补丁将就旧二进制，而是对齐官方做法：
+# 从官方源码现编 11-25 后的新二进制，前后端都是同一版、天然配套，补丁彻底删掉。
+# 源码编译脚本会下载官方旧 tarball、替换二进制+MANIFEST、重打包并改写
+# package/quickstart/Makefile 的 PKG_SOURCE_URL(file://) 与 PKG_HASH。
+# 当前目录是 OpenWrt 源码树（WRT-CORE 里已 cd ./wrt/），传 "."。
+BQS="$GITHUB_WORKSPACE/Scripts/build-quickstart-source.sh"
+if [ -f "$BQS" ]; then
+  bash "$BQS" "."
 else
-  echo "WARN: luci-app-quickstart istore_backend.lua not found at $QSBACKEND, skip patch"
+  echo "ERROR: 找不到 $BQS，无法从源码编译 quickstart，首页将因前后端错配而损坏"
+  exit 1
 fi
+# 确认 tarball 里的二进制已被替换（新二进制体积/架构应正常，非 0）
+ls -l ./dl/quickstart-binary-*.tar.gz 2>/dev/null || echo "WARN: 未找到重打的 quickstart tarball"
 
 UPDATE_PACKAGE "luci-app-re-homeproxy" "1andrevich/homeproxy-hiddify" "master" "" "luci-app-homeproxy"
 
