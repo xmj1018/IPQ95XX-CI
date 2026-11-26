@@ -20,8 +20,9 @@ jobs:
       # 不支持 --info/--files 新语法)。强制确认装的是 3.x。
       - name: Install tools
         run: |
-          apk add --no-cache --upgrade apk-tools git bash tar gzip
+          apk add --no-cache --upgrade apk-tools git bash tar gzip gh
           apk --version
+          gh --version | head -1
 
       - uses: actions/checkout@v4
 

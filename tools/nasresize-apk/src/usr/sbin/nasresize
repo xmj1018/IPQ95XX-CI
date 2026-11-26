@@ -88,10 +88,18 @@ cmd_status() {
 	fi
 	[ -f "$SAFE" ] && safe=1
 	local lock=0; [ -d "$LOCK" ] && lock=1
+	# 可用的文件系统: 三机型固件工具集不同 (HG5585F 带 f2fs-tools, IPQ95XX 仅 e2fsprogs)。
+	# 只上报本机真实存在的 mkfs 工具, 让界面隐藏不可选项, 避免选了 f2fs 却 mkfs 失败。
+	local fs_avail="ext4"
+	command -v mkfs.ext4 >/dev/null 2>&1 || fs_avail=""
+	command -v mkfs.f2fs >/dev/null 2>&1 && fs_avail="${fs_avail:+$fs_avail,}f2fs"
+	[ -n "$fs_avail" ] || fs_avail="none"
+
 	local body=""
 	body="$(jq_kv ok 1),$(jq_kv mode "$mode"),$(jq_kv src "$src"),$(jq_kv dev "$dev"),$(jq_kv uuid "$uuid")"
 	body="$body,$(jq_kv fstype "$fstype"),$(jq_kv size "$size"),$(jq_kv used "$used")"
 	body="$body,$(jq_kv inner_dev "$inner_dev"),$(jq_kv inner_fs "$inner_fs"),$(jq_kv inner_wb "$inner_wb"),$(jq_kv safe "$safe"),$(jq_kv busy "$lock")"
+	body="$body,$(jq_kv fs_avail "$fs_avail")"
 	out "{${body}}"
 }
 
@@ -185,8 +193,12 @@ cmd_expand() {
 
 	log "=== expand start dev=$dev fstype=$fstype ==="
 	case "$fstype" in
-		ext4) mkfs.ext4 -F -q "$dev" >/dev/null 2>&1 || fail "mkfs.ext4 失败 (固件需 e2fsprogs)";;
-		f2fs) mkfs.f2fs -f "$dev" >/dev/null 2>&1 || fail "mkfs.f2fs 失败 (固件需 f2fs-tools)";;
+		ext4)
+			command -v mkfs.ext4 >/dev/null 2>&1 || fail "本机缺少 mkfs.ext4 (固件未含 e2fsprogs), 请改用 f2fs 或换带 e2fsprogs 的固件"
+			mkfs.ext4 -F -q "$dev" >/dev/null 2>&1 || fail "mkfs.ext4 失败";;
+		f2fs)
+			command -v mkfs.f2fs >/dev/null 2>&1 || fail "本机缺少 mkfs.f2fs (固件未含 f2fs-tools), 请改用 ext4"
+			mkfs.f2fs -f "$dev" >/dev/null 2>&1 || fail "mkfs.f2fs 失败";;
 		*) fail "文件系统仅支持 ext4 或 f2fs";;
 	esac
 	local uuid

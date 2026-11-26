@@ -118,6 +118,22 @@ return view.extend({
 		set('rz-used', d.used);
 		set('rz-fs', d.fstype);
 		set('rz-inner', d.inner_dev || d.inner_fs);
+		// 三机型固件工具集不同: 按后端上报的 fs_avail 只显示本机可用的文件系统,
+		// 避免 IPQ95XX (无 f2fs-tools) 选了 f2fs 后 mkfs 失败。
+		var fssel = document.getElementById('rz-fs-sel');
+		if (fssel) {
+			var avail = String(d.fs_avail || 'ext4').split(',');
+			var opts = [
+				{ v: 'ext4', t: 'ext4（推荐，兼容性好）' },
+				{ v: 'f2fs', t: 'f2fs（U 盘更耐用）' }
+			];
+			var html = '';
+			opts.forEach(function(o) {
+				if (avail.indexOf(o.v) >= 0) html += '<option value="' + o.v + '">' + o.t + '</option>';
+			});
+			if (!html) html = '<option value="">(本机无可用 mkfs 工具)</option>';
+			fssel.innerHTML = html;
+		}
 		var ext = (d.mode === 'extroot');
 		var a = document.getElementById('rz-expand-box'); if (a) a.style.display = ext ? 'none' : '';
 		var r = document.getElementById('rz-reduce-box'); if (r) r.style.display = ext ? '' : 'none';
