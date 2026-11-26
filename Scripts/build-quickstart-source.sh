@@ -23,6 +23,10 @@ QS_SRC="$WS/_qs_src"                 # 官方源码临时目录
 DL_DIR="$OWRT_ROOT/dl"
 # HG5585F 的 wrt 树可能还没有 dl/（WRT-CORE 机型则已存在），写 tarball 前必须先建好
 mkdir -p "$DL_DIR"
+# ★必须绝对化：后面第 98 行 cd 到 _qs_build/unpack 后，第 100 行还会用 $DL_DIR 写 tarball。
+#   若 DL_DIR 是相对路径（HG5585F 传 "." → "./dl"），此时会解析成 unpack/dl（不存在），
+#   报 "./dl/quickstart-binary-*.tar.gz: No such file or directory"（#22 就是这么挂的）。
+DL_DIR="$(cd "$DL_DIR" && pwd)"
 WORK="$WS/_qs_build"
 
 echo "=== build-quickstart-source: 从官方源码编译配套二进制 ==="
