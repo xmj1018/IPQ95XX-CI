@@ -16,6 +16,10 @@
 set -euo pipefail
 
 OWRT_ROOT="${1:-.}"
+# ★必须绝对化：脚本第 59 行 cd 到 _qs_src、第 98 行 cd 到 _qs_build/unpack，
+#   之后第 107 行还要用 $OWRT_ROOT/package/quickstart 找 Makefile。
+#   若 OWRT_ROOT 是 "."（三机型调用方都传 "."），相对路径会解析到 unpack/ 下找不到包。
+OWRT_ROOT="$(cd "$OWRT_ROOT" && pwd)"
 WS="${GITHUB_WORKSPACE:-$(pwd)}"
 QS_VER="0.17.1-rc20261028"           # 与 app-hub Makefile 的 PKG_VERSION 一致，避免改版本号
 GO_VER="1.26.11"
