@@ -10,6 +10,27 @@ for PKG in quickstart luci-app-quickstart luci-app-istorex luci-app-store taskd 
   UPDATE_PACKAGE "$PKG" "kenzok8/openwrt-packages" "master" "pkg"
 done
 
+# ── 修复 luci-app-quickstart r3 首页"暂时无法读取路由器配置" ──
+# kenzok8 官方 2026-11-24 把 luci-app-quickstart 升到 0.17.1-rc20261028-r3，
+# 其中 istore_backend.lua 把 session_retrieve(sid, nil) 改成 session_retrieve(sid, {"root"})，
+# 导致登录 session 校验失败，首页 quickstart 前端读后端配置返回 unavailable
+# （"暂时无法读取路由器配置，正在临时展示内置首页"）。
+# 用户 11-23 正常固件用的是 r2（session_retrieve(sid, nil)）。
+# 这里保留官方最新 r3 包，只把这一行改回 r2 行为；幂等，找不到就跳过。
+QSBACKEND="./package/luci-app-quickstart/luasrc/controller/istore_backend.lua"
+if [ -f "$QSBACKEND" ]; then
+  if grep -q 'session_retrieve(sid, {"root"})' "$QSBACKEND"; then
+    sed -i 's/session_retrieve(sid, {"root"})/session_retrieve(sid, nil)/g' "$QSBACKEND"
+    echo "quickstart r3 patch: session_retrieve root -> nil (fix homepage unavailable)"
+  elif grep -q 'session_retrieve(sid, nil)' "$QSBACKEND"; then
+    echo "quickstart backend already uses session_retrieve(sid, nil), skip patch"
+  else
+    echo "WARN: quickstart istore_backend.lua session_retrieve form unknown, check manually"
+  fi
+else
+  echo "WARN: luci-app-quickstart istore_backend.lua not found at $QSBACKEND, skip patch"
+fi
+
 UPDATE_PACKAGE "luci-app-re-homeproxy" "1andrevich/homeproxy-hiddify" "master" "" "luci-app-homeproxy"
 
 if [ -d "$GITHUB_WORKSPACE/user-files" ]; then
