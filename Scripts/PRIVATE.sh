@@ -6,17 +6,47 @@ UPDATE_PACKAGE "luci-app-honk" "kenzok8/openwrt-honk" "main" "pkg"
 UPDATE_PACKAGE "v2ray-geodata" "kenzok8/small" "master" "" "v2ray-geoip v2ray-geosite"
 UPDATE_PACKAGE "open-app-filter" "destan19/OpenAppFilter" "master" "" "luci-app-appfilter oaf open-app-filter"
 
+# ── iStoreOS 系列包：从项目作者官方源拉取（2026-11-26 按用户要求改） ──
+# 源头是 istoreos（iStoreOS 团队），不再用 kenzok8/openwrt-packages 这个中间打包仓。
+#   - istoreos/istoreos-app-hub : apps/quickstart/  → quickstart, luci-app-quickstart
+#                                 apps/istorex/     → luci-app-istorex
+#   - istoreos/istore           : luci/             → luci-app-store, taskd, luci-lib-taskd, luci-lib-xterm
+# 官方仓是多层目录(apps/<应用>/<包名> 或 luci/<包名>)，UPDATE_PACKAGE 的 pkg 模式
+# 用模糊 -iname 会误抓相邻包(如 quickstart 会连带 quickstart-netpolicy)，这里按精确路径拷贝。
+ISTORE_HUB="./package/_istoreos-app-hub"
+ISTORE_LUCI="./package/_istoreos-luci"
+rm -rf "$ISTORE_HUB" "$ISTORE_LUCI"
+git clone --depth=1 --single-branch --branch main "https://github.com/istoreos/istoreos-app-hub.git" "$ISTORE_HUB"
+git clone --depth=1 --single-branch --branch main "https://github.com/istoreos/istore.git" "$ISTORE_LUCI"
+
+# 删除 feeds 里可能存在的同名包，避免与官方源冲突
 for PKG in quickstart luci-app-quickstart luci-app-istorex luci-app-store taskd luci-lib-taskd luci-lib-xterm; do
-  UPDATE_PACKAGE "$PKG" "kenzok8/openwrt-packages" "master" "pkg"
+  find ./feeds/luci/ ./feeds/packages/ -maxdepth 4 -type d -iname "*$PKG*" -exec rm -rf {} + 2>/dev/null || :
 done
 
+# 精确拷贝官方包到 ./package/ (先删目标再拷，避免 cp 嵌套成 pkg/pkg/)
+copy_istore_pkg() {
+  local src="$1" name="$2"
+  [ -d "$src" ] || { echo "WARN: 官方包源不存在: $src"; return 1; }
+  rm -rf "./package/$name"
+  cp -af "$src" "./package/$name"
+}
+copy_istore_pkg "$ISTORE_HUB/apps/quickstart/quickstart"          quickstart
+copy_istore_pkg "$ISTORE_HUB/apps/quickstart/luci-app-quickstart" luci-app-quickstart
+copy_istore_pkg "$ISTORE_HUB/apps/istorex/luci-app-istorex"       luci-app-istorex
+copy_istore_pkg "$ISTORE_LUCI/luci/luci-app-store"                luci-app-store
+copy_istore_pkg "$ISTORE_LUCI/luci/taskd"                         taskd
+copy_istore_pkg "$ISTORE_LUCI/luci/luci-lib-taskd"                luci-lib-taskd
+copy_istore_pkg "$ISTORE_LUCI/luci/luci-lib-xterm"                luci-lib-xterm
+rm -rf "$ISTORE_HUB" "$ISTORE_LUCI"
+
 # ── 修复 luci-app-quickstart r3 首页"暂时无法读取路由器配置" ──
-# kenzok8 官方 2026-11-24 把 luci-app-quickstart 升到 0.17.1-rc20261028-r3，
-# 其中 istore_backend.lua 把 session_retrieve(sid, nil) 改成 session_retrieve(sid, {"root"})，
+# 官方 istoreos-app-hub 当前 luci-app-quickstart 就是 0.17.1-rc20261028-r3，
+# 其 istore_backend.lua 把 session_retrieve(sid, nil) 改成 session_retrieve(sid, {"root"})，
 # 导致登录 session 校验失败，首页 quickstart 前端读后端配置返回 unavailable
 # （"暂时无法读取路由器配置，正在临时展示内置首页"）。
 # 用户 11-23 正常固件用的是 r2（session_retrieve(sid, nil)）。
-# 这里保留官方最新 r3 包，只把这一行改回 r2 行为；幂等，找不到就跳过。
+# 这里保留官方最新 r3 包，只把这一行改回 r2 行为；幂等，作者上游修好后会自动跳过。
 QSBACKEND="./package/luci-app-quickstart/luasrc/controller/istore_backend.lua"
 if [ -f "$QSBACKEND" ]; then
   if grep -q 'session_retrieve(sid, {"root"})' "$QSBACKEND"; then
