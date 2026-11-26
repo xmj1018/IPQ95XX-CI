@@ -129,7 +129,9 @@ jobs:
           APK=$(ls "$GITHUB_WORKSPACE"/dist/*.apk)
           echo "=== magic (ADBd = apk v3) ==="; od -An -c -N4 "$APK"
           rm -rf /tmp/apkroot; mkdir -p /tmp/apkroot/etc/init.d /tmp/apkroot/tmp
-          apk add --root /tmp/apkroot --initdb --allow-untrusted "$APK"
+          # view/menu/acl 都是 bake-in 包文件（非脚本覆盖），故 --no-scripts 即可；
+          # 隔离 root 无 /bin/sh，跑 post-install 会 execve 失败，与包本身无关。
+          apk add --root /tmp/apkroot --initdb --no-scripts --allow-untrusted "$APK"
           V=/tmp/apkroot/www/luci-static/resources/view/partexp.js
           echo "=== view 头部 ==="; head -6 "$V"
           echo "=== 断言：中文界面确实在包内、非原版英文 ==="
