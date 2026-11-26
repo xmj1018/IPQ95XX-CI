@@ -179,10 +179,14 @@ jobs:
 
       - name: Custom Packages
         run: |
+          set -e
           cd ./wrt/
 
-          $GITHUB_WORKSPACE/Scripts/Packages.sh
-          $GITHUB_WORKSPACE/Scripts/Handles.sh
+          # ★用 && 串联，任一步失败即让本 step 失败（尤其 Packages.sh 里
+          # source 的 PRIVATE.sh 会用 exit 1 中断 quickstart 源码编译失败的情况），
+          # 绝不能让「源码编译失败却继续用旧二进制」产出首页坏的假固件（2026-11-27 教训）。
+          $GITHUB_WORKSPACE/Scripts/Packages.sh && \
+          $GITHUB_WORKSPACE/Scripts/Handles.sh && \
           $GITHUB_WORKSPACE/.github/scripts/prepare-i2c-tools.sh
 
       - name: Custom Settings
