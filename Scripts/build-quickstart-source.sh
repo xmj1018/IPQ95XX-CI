@@ -21,6 +21,8 @@ QS_VER="0.17.1-rc20261028"           # 与 app-hub Makefile 的 PKG_VERSION 一�
 GO_VER="1.26.11"
 QS_SRC="$WS/_qs_src"                 # 官方源码临时目录
 DL_DIR="$OWRT_ROOT/dl"
+# HG5585F 的 wrt 树可能还没有 dl/（WRT-CORE 机型则已存在），写 tarball 前必须先建好
+mkdir -p "$DL_DIR"
 WORK="$WS/_qs_build"
 
 echo "=== build-quickstart-source: 从官方源码编译配套二进制 ==="
