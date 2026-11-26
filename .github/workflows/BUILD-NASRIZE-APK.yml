@@ -108,9 +108,22 @@ jobs:
             --output "$OUT/${NAME}-${VER}.apk"
 
           ls -lh "$OUT"/*.apk
-          echo "=== 包内条目 (验证为 v3 三段结构) ==="
-          tar tzf "$OUT/${NAME}-${VER}.apk" 2>/dev/null | head || true
           echo "APK_PATH=$OUT/${NAME}-${VER}.apk" >> "$GITHUB_ENV"
+
+      - name: Verify package installs with apk v3 (real install test)
+        run: |
+          set -eu
+          APK=$(ls "$GITHUB_WORKSPACE"/dist/*.apk)
+          echo "=== 包格式头 (ADBD = apk v3 原生 ADB 格式) ==="
+          od -An -tx1 -N 8 "$APK"
+          echo "=== apk info 解析测试 ==="
+          apk info --allow-untrusted "$APK" || true
+          echo "=== 真实安装到隔离 root (工具本身判定包是否合法) ==="
+          rm -rf /tmp/apkroot; mkdir -p /tmp/apkroot
+          apk add --root /tmp/apkroot --initdb --no-scripts --allow-untrusted "$APK"
+          echo "=== 安装后文件核对 ==="
+          find /tmp/apkroot -name 'nasresize' -o -name 'luci-app-nasresize.json' -o -name '99-nasresize' | sort
+          echo "INSTALL TEST PASS: 包可被 apk v3 正常安装"
 
       - name: Publish release asset (GitHub REST API)
         env:
