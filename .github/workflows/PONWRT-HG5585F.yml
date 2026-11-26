@@ -97,6 +97,53 @@ jobs:
           git clone --depth 1 https://github.com/jerrykuku/luci-theme-argon.git package/luci-theme-argon
           echo "=== Argon 官方版本确认（应为 3.2.0）==="
           grep -E '^PKG_VERSION|^PKG_RELEASE|^LUCI_BASENAME' package/luci-theme-argon/Makefile
+          # ★Argon 3.2.0 三项固化（与 SBE1V1K / BE10000 的 Scripts/PRIVATE.sh 完全一致）：
+          #   1) 一级菜单选中项白字；2) 主色 #6A89CC；3) 登录面板透明度 0.3。
+          #   主题本体仍是 jerrykuku 官方 master 3.2.0 + 官方字体，仅这三项覆盖。
+          ARGON_PKG="package/luci-theme-argon"
+          ARGON_CSS="$ARGON_PKG/htdocs/luci-static/argon/css/base.css"
+          ARGON_CONFIG="$ARGON_PKG/root/etc/config/argon"
+          ARGON_DEFAULT="$ARGON_PKG/root/etc/uci-defaults/30_luci-theme-argon"
+          # 1) 选中项强制白字（官方 base.css 给 #6A89CC 算出黑字）
+          if [ -f "$ARGON_CSS" ] && ! grep -q "Argon selected white text" "$ARGON_CSS"; then
+            cat >> "$ARGON_CSS" <<'ARGON_WHITE_TEXT_EOF'
+
+          /* Argon selected white text (keep primary #6A89CC) */
+          :root {
+            --light-on-primary: #ffffff !important;
+            --accent-text: #ffffff !important;
+          }
+          .main-left .nav > li > :is(a, button):first-child.active,
+          .main-left .nav > li > :is(a, button):first-child.active::after,
+          .main-left .nav > li > :is(a, button):first-child.active .menu-icon,
+          .main-left .nav > li > :is(a, button):first-child:hover,
+          .main-left .nav > li > :is(a, button):first-child:hover::after,
+          .main-left .nav > li > :is(a, button):first-child:hover .menu-icon {
+            color: #ffffff !important;
+          }
+          ARGON_WHITE_TEXT_EOF
+            echo "Argon base.css: appended selected white-text override"
+          fi
+          # 2) 主色 #6A89CC（config + uci-defaults 两处）
+          ARGON_PRIMARY='#6A89CC'
+          if [ -f "$ARGON_CONFIG" ]; then
+            sed -i "s/option primary '[^']*'/option primary '$ARGON_PRIMARY'/" "$ARGON_CONFIG"
+            echo "Argon config primary: $(grep -m1 'option primary' "$ARGON_CONFIG" | tr -d '\t')"
+          fi
+          if [ -f "$ARGON_DEFAULT" ]; then
+            sed -i "s/^primary #[0-9A-Fa-f]\{6\}$/primary $ARGON_PRIMARY/" "$ARGON_DEFAULT"
+            echo "Argon uci-defaults primary: $(grep -m1 '^primary ' "$ARGON_DEFAULT")"
+          fi
+          # 3) 登录面板透明度 0.3（config + uci-defaults 两处，dark 继承）
+          ARGON_TRANSPARENCY='0.3'
+          if [ -f "$ARGON_CONFIG" ]; then
+            sed -i "s/option transparency '[^']*'/option transparency '$ARGON_TRANSPARENCY'/" "$ARGON_CONFIG"
+            echo "Argon config transparency: $(grep -m1 "option transparency '" "$ARGON_CONFIG" | tr -d '\t')"
+          fi
+          if [ -f "$ARGON_DEFAULT" ]; then
+            sed -i "s/^transparency [0-9.]*$/transparency $ARGON_TRANSPARENCY/" "$ARGON_DEFAULT"
+            echo "Argon uci-defaults transparency: $(grep -m1 '^transparency ' "$ARGON_DEFAULT")"
+          fi
           # 注意：3.2.0 已把 argon-config 集成进主题，不装独立 luci-app-argon-config，
           # 否则 APK 会报 trying to overwrite ... owned by luci-theme-argon。
           # 分区扩容（sirpdboy）+ 磁盘管理器（sbwml）—— 用户指定，两者默认都在「系统」菜单
