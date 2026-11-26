@@ -1,0 +1,10 @@
+{
+	"admin/system/fan": {
+		"title": "风扇控制",
+		"order": 95,
+		"action": {
+			"type": "view",
+			"path": "sbe1v1k/fan"
+		}
+	}
+}

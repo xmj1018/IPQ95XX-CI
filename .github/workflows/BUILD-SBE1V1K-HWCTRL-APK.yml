@@ -1,12 +1,11 @@
-name: Build SBE1V1K 风扇控制 + RGB灯 备份 APK (两独立包)
+name: Build SBE1V1K 风扇控制 + RGB 状态灯 APK (11-23 原版大界面)
 
-# 从 user-files 直接打包 SBE1V1K 那套从能用的旧固件逐字节提取的风扇/RGB 方案，
-# 生成两个可独立安装的 apk 包，供固件出问题时直接 apk add 恢复：
-#   1) luci-app-sbe1v1k-fan —— 风扇调速（menu/ACL/view/fanctl/config）
-#   2) luci-app-sbe1v1k-led —— RGB 状态灯（menu/ACL/view/ledctl/config）
-# 机制严格照搬已验证的 BUILD-NASRIZE-APK.yml：alpine:edge + apk mkpkg(v3,ADBd)
-# + 真实 apk add 隔离 root 安装验证 + 发布到独立 release。
-# 两包各自独立：文件名/包内路径/ACL 全分开，互不覆盖、互不依赖。
+# 从用户确认的 11-23 09:16:58「最终版」固件逐字节提取的大界面方案打包：
+#   1) luci-app-sbe1v1k-fan —— 「风扇控制」(order 95, view sbe1v1k/fan)
+#   2) luci-app-sbe1v1k-led —— 「RGB 状态灯」(order 96, view sbe1v1k/led)
+# 两包完全独立：菜单/ACL 文件名与内部 key 均不同，互不覆盖、互不依赖，
+# 可单独 apk add 安装。view 用 30KB/27KB 大页面，不是 16:45 那套 26KB/25KB 小界面。
+# 打包框架照搬已验证的 apk mkpkg(v3,ADBd) + 隔离 root 真实安装验证 + release 发布。
 
 on:
   workflow_dispatch:
@@ -40,12 +39,11 @@ jobs:
           WS="$GITHUB_WORKSPACE"
           OUT="$WS/dist"; mkdir -p "$OUT"
           SRC="$WS/user-files"
+          DEF="$WS/hwctrl-apk"
 
           mkpkg() {
             # $1=pkg-name  $2=version  $3=description  $4=staging-dir
             NAME="$1"; VER="$2"; DESC="$3"; ST="$4"
-            # post-install：清 LuCI 缓存，启用并启动本包对应的守护，重载 rpcd/uhttpd
-            # 从包名推导守护名：luci-app-sbe1v1k-fan -> fanctl, ...-led -> ledctl
             case "$NAME" in
               *-fan) DAEMON=fanctl ;;
               *-led) DAEMON=ledctl ;;
@@ -53,7 +51,7 @@ jobs:
             esac
             printf '%s\n' \
               '#!/bin/sh' \
-              '# 由备份 APK 安装后触发：让本套服务立即可用' \
+              '# 由 APK 安装后触发：让本套服务立即可用，只启停本包守护' \
               'rm -f /tmp/luci-indexcache* 2>/dev/null || true' \
               'rm -rf /tmp/luci-modulecache 2>/dev/null || true' \
               "chmod +x /usr/sbin/$DAEMON /etc/init.d/$DAEMON 2>/dev/null || true" \
@@ -69,7 +67,7 @@ jobs:
               --info "description:$DESC" \
               --info "arch:noarch" \
               --info "license:MIT" \
-              --info "origin:sbe1v1k-hwctrl-backup" \
+              --info "origin:sbe1v1k-hwctrl-bigui" \
               --info "maintainer:xmj1018" \
               --script "post-install:$ST/scripts/post-install" \
               --script "post-upgrade:$ST/scripts/post-install" \
@@ -78,81 +76,112 @@ jobs:
             echo "built $OUT/${NAME}-${VER}.apk"
           }
 
-          # ---------- 包1：风扇调速（全部来自 user-files，逐字节原样） ----------
+          # ---------- 包1：风扇控制（11-23 大界面 fan.js 30612B） ----------
           FAN="$WS/.stage-fan"; rm -rf "$FAN"
-          mkdir -p "$FAN/data/etc/init.d" "$FAN/data/etc/config" "$FAN/data/usr/sbin" \
+          mkdir -p "$FAN/data/etc/init.d" "$FAN/data/etc/config" \
+                   "$FAN/data/usr/sbin" "$FAN/data/usr/lib/sbe1v1k" \
                    "$FAN/data/usr/share/luci/menu.d" "$FAN/data/usr/share/rpcd/acl.d" \
-                   "$FAN/data/www/luci-static/resources/view/system" "$FAN/scripts"
-          cp -af "$SRC/etc/init.d/fanctl"                            "$FAN/data/etc/init.d/fanctl"
-          cp -af "$SRC/etc/config/fan"                               "$FAN/data/etc/config/fan"
-          cp -af "$SRC/usr/sbin/fanctl"                              "$FAN/data/usr/sbin/fanctl"
-          cp -af "$SRC/usr/share/luci/menu.d/luci-app-fan.json"      "$FAN/data/usr/share/luci/menu.d/"
-          cp -af "$SRC/usr/share/rpcd/acl.d/luci-app-fan.json"       "$FAN/data/usr/share/rpcd/acl.d/"
-          cp -af "$SRC/www/luci-static/resources/view/system/fan.js" "$FAN/data/www/luci-static/resources/view/system/fan.js"
-          # git 里这些脚本是 644，checkout 会丢执行位；强制修正包内权限
+                   "$FAN/data/www/luci-static/resources/view/sbe1v1k" "$FAN/scripts"
+          # 后端/配置/init：11-23 固件逐字节原样
+          cp -af "$SRC/etc/init.d/fanctl"          "$FAN/data/etc/init.d/fanctl"
+          cp -af "$SRC/etc/config/fan"             "$FAN/data/etc/config/fan"
+          cp -af "$SRC/usr/sbin/fanctl"            "$FAN/data/usr/sbin/fanctl"
+          cp -af "$SRC/usr/lib/sbe1v1k/fanctl"     "$FAN/data/usr/lib/sbe1v1k/fanctl"
+          cp -af "$SRC/usr/lib/sbe1v1k/init.fanctl" "$FAN/data/usr/lib/sbe1v1k/init.fanctl"
+          cp -af "$SRC/usr/lib/sbe1v1k/config.fan" "$FAN/data/usr/lib/sbe1v1k/config.fan"
+          # 大界面 view（不是 system/fan.js 小界面）
+          cp -af "$SRC/www/luci-static/resources/view/sbe1v1k/fan.js" \
+                 "$FAN/data/www/luci-static/resources/view/sbe1v1k/fan.js"
+          # 拆分后的独立菜单/ACL
+          cp -af "$DEF/fan/menu.d/luci-app-sbe1v1k-fan.json" \
+                 "$FAN/data/usr/share/luci/menu.d/luci-app-sbe1v1k-fan.json"
+          cp -af "$DEF/fan/acl.d/luci-app-sbe1v1k-fan.json" \
+                 "$FAN/data/usr/share/rpcd/acl.d/luci-app-sbe1v1k-fan.json"
           chmod 755 "$FAN/data/etc/init.d/fanctl" "$FAN/data/usr/sbin/fanctl"
           chown -R 0:0 "$FAN"
 
-          # ---------- 包2：RGB 状态灯（全部来自 user-files，逐字节原样） ----------
-          LED="$WS/.stage-led"; rm -rf "$LED"; mkdir -p "$LED/data" "$LED/scripts"
-          mkdir -p "$LED/data/etc/init.d" "$LED/data/etc/config" "$LED/data/usr/sbin" \
+          # ---------- 包2：RGB 状态灯（11-23 大界面 led.js 27380B） ----------
+          LED="$WS/.stage-led"; rm -rf "$LED"
+          mkdir -p "$LED/data/etc/init.d" "$LED/data/etc/config" \
+                   "$LED/data/usr/sbin" "$LED/data/usr/lib/sbe1v1k" \
                    "$LED/data/usr/share/luci/menu.d" "$LED/data/usr/share/rpcd/acl.d" \
-                   "$LED/data/www/luci-static/resources/view/system"
-          cp -af "$SRC/etc/init.d/ledctl"                            "$LED/data/etc/init.d/ledctl"
-          cp -af "$SRC/etc/config/led"                               "$LED/data/etc/config/led"
-          cp -af "$SRC/usr/sbin/ledctl"                              "$LED/data/usr/sbin/ledctl"
-          cp -af "$SRC/usr/share/luci/menu.d/luci-app-led.json"      "$LED/data/usr/share/luci/menu.d/"
-          cp -af "$SRC/usr/share/rpcd/acl.d/luci-app-led.json"       "$LED/data/usr/share/rpcd/acl.d/"
-          cp -af "$SRC/www/luci-static/resources/view/system/led.js" "$LED/data/www/luci-static/resources/view/system/led.js"
+                   "$LED/data/www/luci-static/resources/view/sbe1v1k" "$LED/scripts"
+          cp -af "$SRC/etc/init.d/ledctl"          "$LED/data/etc/init.d/ledctl"
+          cp -af "$SRC/etc/config/led"             "$LED/data/etc/config/led"
+          cp -af "$SRC/usr/sbin/ledctl"            "$LED/data/usr/sbin/ledctl"
+          cp -af "$SRC/usr/lib/sbe1v1k/ledctl"     "$LED/data/usr/lib/sbe1v1k/ledctl"
+          cp -af "$SRC/usr/lib/sbe1v1k/init.ledctl" "$LED/data/usr/lib/sbe1v1k/init.ledctl"
+          cp -af "$SRC/usr/lib/sbe1v1k/config.led" "$LED/data/usr/lib/sbe1v1k/config.led"
+          cp -af "$SRC/www/luci-static/resources/view/sbe1v1k/led.js" \
+                 "$LED/data/www/luci-static/resources/view/sbe1v1k/led.js"
+          cp -af "$DEF/led/menu.d/luci-app-sbe1v1k-led.json" \
+                 "$LED/data/usr/share/luci/menu.d/luci-app-sbe1v1k-led.json"
+          cp -af "$DEF/led/acl.d/luci-app-sbe1v1k-led.json" \
+                 "$LED/data/usr/share/rpcd/acl.d/luci-app-sbe1v1k-led.json"
           chmod 755 "$LED/data/etc/init.d/ledctl" "$LED/data/usr/sbin/ledctl"
           chown -R 0:0 "$LED"
 
-          VER="1.0-r20261126"
-          mkpkg "luci-app-sbe1v1k-fan" "$VER" "SBE1V1K PWM fan control (backup, from working firmware)" "$FAN"
-          mkpkg "luci-app-sbe1v1k-led" "$VER" "SBE1V1K RGB status LED control (backup, from working firmware)" "$LED"
+          VER="2.0-r20261126"
+          mkpkg "luci-app-sbe1v1k-fan" "$VER" "SBE1V1K Fan Control (11-23 big UI, fanctl)" "$FAN"
+          mkpkg "luci-app-sbe1v1k-led" "$VER" "SBE1V1K RGB Status LED (11-23 big UI, ledctl)" "$LED"
 
           echo "=== APK magic (ADBd = v3) ==="
           for f in "$OUT"/*.apk; do echo -n "$(basename "$f"): "; od -An -c -N4 "$f"; done
           ls -lh "$OUT"/*.apk
 
-      - name: Verify - real apk install + content asserts
+      - name: Verify - separate installs + content asserts
         run: |
           set -eu
           WS="$GITHUB_WORKSPACE"
           FAN=$(ls "$WS"/dist/luci-app-sbe1v1k-fan-*.apk)
           LED=$(ls "$WS"/dist/luci-app-sbe1v1k-led-*.apk)
 
-          rm -rf /tmp/apkroot; mkdir -p /tmp/apkroot/tmp
-          echo "=== 1) 真实安装两包到隔离 root（--no-scripts 避免无 /bin/sh 依赖）==="
-          apk add --root /tmp/apkroot --initdb --no-scripts --allow-untrusted "$FAN" "$LED"
+          echo "=== 1) 风扇包单独安装到隔离 root ==="
+          rm -rf /tmp/apkfan; mkdir -p /tmp/apkfan/tmp
+          apk add --root /tmp/apkfan --initdb --no-scripts --allow-untrusted "$FAN"
+          [ -f /tmp/apkfan/etc/init.d/fanctl ]
+          [ -f /tmp/apkfan/etc/config/fan ]
+          [ -f /tmp/apkfan/usr/sbin/fanctl ]
+          [ -f /tmp/apkfan/usr/lib/sbe1v1k/fanctl ]
+          [ -f /tmp/apkfan/usr/share/luci/menu.d/luci-app-sbe1v1k-fan.json ]
+          [ -f /tmp/apkfan/usr/share/rpcd/acl.d/luci-app-sbe1v1k-fan.json ]
+          [ -f /tmp/apkfan/www/luci-static/resources/view/sbe1v1k/fan.js ]
+          [ "$(stat -c%s /tmp/apkfan/www/luci-static/resources/view/sbe1v1k/fan.js)" = "30612" ]
+          grep -q '"title": "风扇控制"' /tmp/apkfan/usr/share/luci/menu.d/luci-app-sbe1v1k-fan.json
+          grep -q '"path": "sbe1v1k/fan"' /tmp/apkfan/usr/share/luci/menu.d/luci-app-sbe1v1k-fan.json
+          grep -q '/usr/sbin/fanctl' /tmp/apkfan/usr/share/rpcd/acl.d/luci-app-sbe1v1k-fan.json
+          echo "OK: 风扇包独立齐全，view=30612B 大界面，菜单=风扇控制"
 
-          echo "=== 2) 断言风扇包全部文件到位 ==="
-          [ -f /tmp/apkroot/etc/init.d/fanctl ]
-          [ -f /tmp/apkroot/etc/config/fan ]
-          [ -f /tmp/apkroot/usr/sbin/fanctl ]
-          [ -f /tmp/apkroot/usr/share/luci/menu.d/luci-app-fan.json ]
-          [ -f /tmp/apkroot/usr/share/rpcd/acl.d/luci-app-fan.json ]
-          [ -f /tmp/apkroot/www/luci-static/resources/view/system/fan.js ]
-          grep -q 'SBE1V1K PWM' /tmp/apkroot/usr/sbin/fanctl
-          grep -q '"title": "风扇控制"' /tmp/apkroot/usr/share/luci/menu.d/luci-app-fan.json
-          echo "OK: 风扇包 6 文件齐全，fanctl/menu 内容正确"
+          echo "=== 2) RGB 包单独安装到隔离 root ==="
+          rm -rf /tmp/apkled; mkdir -p /tmp/apkled/tmp
+          apk add --root /tmp/apkled --initdb --no-scripts --allow-untrusted "$LED"
+          [ -f /tmp/apkled/etc/init.d/ledctl ]
+          [ -f /tmp/apkled/etc/config/led ]
+          [ -f /tmp/apkled/usr/sbin/ledctl ]
+          [ -f /tmp/apkled/usr/lib/sbe1v1k/ledctl ]
+          [ -f /tmp/apkled/usr/share/luci/menu.d/luci-app-sbe1v1k-led.json ]
+          [ -f /tmp/apkled/usr/share/rpcd/acl.d/luci-app-sbe1v1k-led.json ]
+          [ -f /tmp/apkled/www/luci-static/resources/view/sbe1v1k/led.js ]
+          [ "$(stat -c%s /tmp/apkled/www/luci-static/resources/view/sbe1v1k/led.js)" = "27380" ]
+          grep -q '"title": "RGB 状态灯"' /tmp/apkled/usr/share/luci/menu.d/luci-app-sbe1v1k-led.json
+          grep -q '"path": "sbe1v1k/led"' /tmp/apkled/usr/share/luci/menu.d/luci-app-sbe1v1k-led.json
+          grep -q '/usr/sbin/ledctl' /tmp/apkled/usr/share/rpcd/acl.d/luci-app-sbe1v1k-led.json
+          echo "OK: RGB 包独立齐全，view=27380B 大界面，菜单=RGB 状态灯"
 
-          echo "=== 3) 断言 RGB 包全部文件到位 ==="
-          [ -f /tmp/apkroot/etc/init.d/ledctl ]
-          [ -f /tmp/apkroot/etc/config/led ]
-          [ -f /tmp/apkroot/usr/sbin/ledctl ]
-          [ -f /tmp/apkroot/usr/share/luci/menu.d/luci-app-led.json ]
-          [ -f /tmp/apkroot/usr/share/rpcd/acl.d/luci-app-led.json ]
-          [ -f /tmp/apkroot/www/luci-static/resources/view/system/led.js ]
-          grep -q 'RGB PWM LED' /tmp/apkroot/usr/sbin/ledctl
-          grep -q '150 / 255' /tmp/apkroot/www/luci-static/resources/view/system/led.js
-          echo "OK: RGB 包 6 文件齐全，ledctl/led.js 配平逻辑正确"
+          echo "=== 3) 两包互不串味 ==="
+          [ ! -e /tmp/apkfan/www/luci-static/resources/view/sbe1v1k/led.js ]
+          [ ! -e /tmp/apkfan/usr/sbin/ledctl ]
+          [ ! -e /tmp/apkfan/usr/share/luci/menu.d/luci-app-sbe1v1k-led.json ]
+          [ ! -e /tmp/apkled/www/luci-static/resources/view/sbe1v1k/fan.js ]
+          [ ! -e /tmp/apkled/usr/sbin/fanctl ]
+          [ ! -e /tmp/apkled/usr/share/luci/menu.d/luci-app-sbe1v1k-fan.json ]
+          [ ! -e /tmp/apkfan/www/luci-static/resources/view/system/fan.js ]
+          [ ! -e /tmp/apkled/www/luci-static/resources/view/system/led.js ]
+          [ ! -e /tmp/apkfan/usr/share/luci/menu.d/luci-app-fan.json ]
+          [ ! -e /tmp/apkled/usr/share/luci/menu.d/luci-app-led.json ]
+          echo "OK: 无对方文件、无 16:45 小界面残留、无合并 sbe1v1k.json"
 
-          echo "=== 4) 断言两包互不串味（无对方文件）==="
-          [ ! -f /tmp/apkroot/usr/share/luci/menu.d/luci-app-sbe1v1k.json ] || true
-          echo "OK: 无旧的 sbe1v1k 合并界面残留"
-
-          echo "=== 安装后全部文件 ==="; find /tmp/apkroot -type f | sort
+          echo "=== 安装后文件清单 ==="; find /tmp/apkfan /tmp/apkled -type f | sort
           echo "INSTALL + CONTENT VERIFY PASS"
 
       - name: Publish release (two APKs)
@@ -161,14 +190,15 @@ jobs:
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: |
           set -eu
-          TAG="sbe1v1k-hwctrl-backup-apk"
+          TAG="sbe1v1k-hwctrl-bigui-apk"
           API="https://api.github.com/repos/$GITHUB_REPOSITORY"
           AUTH="Authorization: Bearer $GH_TOKEN"
           JSONH="Accept: application/vnd.github+json"
           curl -s -X DELETE -H "$AUTH" -H "$JSONH" "$API/releases/tags/$TAG" >/dev/null || true
           curl -s -X DELETE -H "$AUTH" -H "$JSONH" "$API/git/refs/tags/$TAG" >/dev/null || true
+          BODY="从 11-23 09:16:58 原版固件逐字节提取的大界面：风扇控制(order 95, sbe1v1k/fan.js 30KB) + RGB 状态灯(order 96, sbe1v1k/led.js 27KB)。两个独立 APK，可单独 apk add 安装、互不依赖；后端 fanctl/ledctl 与原版一致。已通过 apk v3(ADBd) 真实隔离安装 + 内容断言。"
           REL=$(curl -s -X POST -H "$AUTH" -H "$JSONH" -H "Content-Type: application/json" "$API/releases" \
-            -d "{\"tag_name\":\"$TAG\",\"name\":\"SBE1V1K 风扇+RGB 备份 APK (两独立包)\",\"body\":\"从能用的旧固件逐字节提取、与当前固件界面完全一致。两个独立 APK：luci-app-sbe1v1k-fan(风扇调速)、luci-app-sbe1v1k-led(RGB 状态灯)。固件出问题可单独 apk add 恢复，不影响另一套。已通过真实 apk 安装 + 内容断言验证。\",\"target_commitish\":\"$GITHUB_SHA\",\"draft\":false,\"prerelease\":false}")
+            -d "{\"tag_name\":\"$TAG\",\"name\":\"SBE1V1K 风扇控制 + RGB 状态灯 APK（11-23 原版大界面）\",\"body\":\"$BODY\",\"target_commitish\":\"$GITHUB_SHA\",\"draft\":false,\"prerelease\":false}")
           UPLOAD_URL=$(printf '%s' "$REL" | sed -n 's/.*"upload_url": "\([^"]*\)".*/\1/p' | sed 's/{?name,label}//')
           [ -n "$UPLOAD_URL" ] || { echo "release 失败: $REL"; exit 1; }
           for f in "$GITHUB_WORKSPACE"/dist/*.apk; do

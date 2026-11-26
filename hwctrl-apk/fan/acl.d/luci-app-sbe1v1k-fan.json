@@ -1,0 +1,15 @@
+{
+	"luci-app-sbe1v1k-fan": {
+		"description": "SBE1V1K PWM fan control (exec fanctl)",
+		"read": {
+			"file": {
+				"/usr/sbin/fanctl": [ "exec" ]
+			}
+		},
+		"write": {
+			"file": {
+				"/usr/sbin/fanctl": [ "exec" ]
+			}
+		}
+	}
+}

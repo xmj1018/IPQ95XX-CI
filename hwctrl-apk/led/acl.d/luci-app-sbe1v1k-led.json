@@ -1,0 +1,15 @@
+{
+	"luci-app-sbe1v1k-led": {
+		"description": "SBE1V1K RGB status LED control (exec ledctl)",
+		"read": {
+			"file": {
+				"/usr/sbin/ledctl": [ "exec" ]
+			}
+		},
+		"write": {
+			"file": {
+				"/usr/sbin/ledctl": [ "exec" ]
+			}
+		}
+	}
+}
