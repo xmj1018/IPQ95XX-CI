@@ -75,6 +75,18 @@ jobs:
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
+      # ★缓存 restore 必须在「Add extra feeds」之前：后者会从官方源码现编 quickstart
+      #   二进制并重打 dl/quickstart-binary-*.tar.gz + 改写 Makefile 的 PKG_HASH。
+      #   若 restore 在其后（旧顺序），缓存里的旧 tarball 会覆盖新包 → hash 对不上 →
+      #   package/quickstart 下载校验失败（#23 就是这么挂的）。与 WRT-CORE 顺序一致。
+      - name: Cache downloads
+        uses: actions/cache@v4
+        with:
+          path: wrt/dl
+          key: ponwrt-hg5585f-dl-${{ hashFiles('Config/PONWRT-HG5585F.config') }}
+          restore-keys: |
+            ponwrt-hg5585f-dl-
+
       - name: Add extra feeds (honk / iStore)
         run: |
           cd wrt
@@ -208,14 +220,6 @@ jobs:
           done
           # argon 是 clone 到 package/ 根下的官方仓库，单独确认
           [ -f package/luci-theme-argon/Makefile ] && echo "OK      luci-theme-argon (官方 clone $(grep -m1 '^PKG_VERSION' package/luci-theme-argon/Makefile))" || echo "MISSING luci-theme-argon"
-
-      - name: Cache downloads
-        uses: actions/cache@v4
-        with:
-          path: wrt/dl
-          key: ponwrt-hg5585f-dl-${{ hashFiles('Config/PONWRT-HG5585F.config') }}
-          restore-keys: |
-            ponwrt-hg5585f-dl-
 
       - name: Overlay custom files (hostname + apk repos + honk)
         run: |
