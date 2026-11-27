@@ -203,6 +203,25 @@ jobs:
           ./scripts/feeds install luci-app-partexp luci-app-diskman
           # OpenClash：官方 luci feed 已随 install -a 就位，确认一下
           ls -d package/feeds/luci/luci-app-openclash >/dev/null 2>&1 && echo "OK      luci-app-openclash (official feed)" || echo "MISSING luci-app-openclash"
+          # ★OAF 行为管理 / 应用过滤：clone 项目作者本人的官方仓库（destan19/OpenAppFilter）。
+          #   不用镜像/打包仓（sbwml、lxhgxgl 等都不是作者源头）。
+          #   仓库含三个包：luci-app-oaf(界面) + appfilter(用户态服务) + oaf→kmod-oaf(内核 netfilter 模块)。
+          #   只勾 luci-app-oaf（见 Config/PONWRT-HG5585F.config），依赖链自动带出。
+          #   当前目录是 wrt/（OpenWrt 源码树），clone 到 package/OpenAppFilter（作者官方推荐路径）。
+          OAF_DIR="package/OpenAppFilter"
+          rm -rf "$OAF_DIR"
+          git clone --depth=1 --single-branch --branch master \
+            "https://github.com/destan19/OpenAppFilter.git" "$OAF_DIR"
+          echo "OAF commit: $(git -C "$OAF_DIR" rev-parse --short HEAD)"
+          # 硬失败校验：三个包 Makefile 必须都在；缺一个就中止，避免 defconfig 静默丢弃 OAF。
+          for mk in luci-app-oaf/Makefile oaf/Makefile open-app-filter/Makefile; do
+            [ -f "$OAF_DIR/$mk" ] || { echo "ERROR: OAF 官方包缺失 $mk，中止"; exit 1; }
+          done
+          # OAF 依赖 luci-lib-jsonc + luci-compat，必须在 luci feed 里就位，否则界面被丢弃。
+          for dep in luci-lib-jsonc luci-compat; do
+            if ls -d package/feeds/luci/"$dep" >/dev/null 2>&1; then echo "OK      OAF dep: $dep"; else echo "ERROR: OAF 依赖 $dep 不在 luci feed，中止"; exit 1; fi
+          done
+          echo "OK      OAF 三包 + 依赖全部就位（官方源 destan19/OpenAppFilter）"
           # 依赖校验：两插件的所有依赖必须全部就位，否则 make defconfig 会静默丢弃
           for p in luci-app-partexp luci-app-diskman fdisk block-mount bc blkid parted btrfs-progs losetup resize2fs e2fsprogs f2fs-tools kmod-loop lsblk ucode smartmontools wipefs dosfstools exfat-fsck exfat-mkfs swap-utils xfs-mkfs kmod-fs-exfat kmod-fs-f2fs kmod-fs-vfat kmod-fs-xfs; do
             if ls -d package/feeds/*/"$p" >/dev/null 2>&1; then echo "OK      $p"; else echo "MISSING $p"; fi
@@ -282,6 +301,15 @@ jobs:
           for p in honk luci-app-honk luci-app-store luci-app-istorex luci-app-quickstart quickstart taskd luci-lib-taskd luci-lib-xterm xz-utils tar libuci-lua mount-utils luci-theme-argon kmod-crypto-hw-eip93 zram-swap kmod-zram v2ray-geoip v2ray-geosite kmod-sched-bpf kmod-nft-queue; do
             if grep -q "^CONFIG_PACKAGE_${p}=y" .config; then echo "OK   ${p}"; else echo "MISSING ${p}"; fi
           done
+          # ★OAF 硬校验：核心三包必须在 defconfig 后真正选中，任缺其一立即中止，
+          #   避免「clone 成功但被 Kconfig 静默丢弃」的假成功固件。
+          echo "=== OAF 行为管理三包状态 ==="
+          for p in luci-app-oaf appfilter kmod-oaf; do
+            if grep -q "^CONFIG_PACKAGE_${p}=y" .config; then echo "OK   OAF ${p}"; else echo "MISSING OAF ${p}"; echo "ERROR: OAF 核心包 ${p} 未被 defconfig 选中，中止"; exit 1; fi
+          done
+          # 中文包为软检查：luci.mk 按 zh_Hans 生成 luci-i18n-oaf-zh-cn，
+          # 个别 luci.mk 版本命名可能有差异，缺了只警告不中止（OAF 本体功能不受影响）。
+          if grep -q "^CONFIG_PACKAGE_luci-i18n-oaf-zh-cn=y" .config; then echo "OK   OAF luci-i18n-oaf-zh-cn"; else echo "WARN OAF 中文 i18n 包未选中（本体功能不受影响）"; fi
 
       - name: Download package sources
         run: |
