@@ -216,6 +216,17 @@ jobs:
           git clone --depth=1 --single-branch --branch master \
             "https://github.com/destan19/OpenAppFilter.git" "$OAF_DIR"
           echo "OAF commit: $(git -C "$OAF_DIR" rev-parse --short HEAD)"
+          # ★关键：上游 immortalwrt/packages feed 自带一套 open-app-filter（也定义
+          #   KernelPackage/oaf → kmod-oaf，标题 "open app filter kernel module"），
+          #   与作者官方源这套（"OAF netfilter module"）符号重名 → Kconfig 递归依赖
+          #   "symbol PACKAGE_kmod-oaf is selected by PACKAGE_kmod-oaf" → kmod-oaf
+          #   选不中（#27 就是这么挂的）。必须先删掉 feed 里那套 + 旧 luci-app-appfilter，
+          #   只保留作者官方源这一套；删 feeds 软链和源目录都删，避免 install -a 重现。
+          for PKG in open-app-filter luci-app-appfilter; do
+            rm -rf "package/feeds/packages/$PKG" "package/feeds/luci/$PKG" 2>/dev/null || :
+            rm -rf "feeds/packages/net/$PKG" "feeds/luci/applications/$PKG" 2>/dev/null || :
+          done
+          echo "OK      已清除 feeds 里重复的 open-app-filter/luci-app-appfilter（避免 kmod-oaf 符号冲突）"
           # 硬失败校验：三个包 Makefile 必须都在；缺一个就中止，避免 defconfig 静默丢弃 OAF。
           for mk in luci-app-oaf/Makefile oaf/Makefile open-app-filter/Makefile; do
             [ -f "$OAF_DIR/$mk" ] || { echo "ERROR: OAF 官方包缺失 $mk，中止"; exit 1; }
