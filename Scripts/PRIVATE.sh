@@ -40,37 +40,30 @@ copy_istore_pkg "$ISTORE_LUCI/luci/luci-lib-taskd"                luci-lib-taskd
 copy_istore_pkg "$ISTORE_LUCI/luci/luci-lib-xterm"                luci-lib-xterm
 rm -rf "$ISTORE_HUB" "$ISTORE_LUCI"
 
-# ── iStoreOS 首页：对齐官方、从源码编译配套二进制（2026-11-27 定案） ──
-# 根因（已查实）：官方 r3 前端连 unix socket /var/run/quickstart/http.sock，
-# 但 app-hub 打包用的 quickstart 二进制是官方 release 11-12 的旧预编译包
-# (v0.17.1-rc20261028，只监听 TCP 3038、不建 http.sock) → 前后端错配、首页读不到配置。
-# 官方自己在 11-25 已修源码（commit e3a79b6b，后端 serve 默认绑定 --http-unix http.sock），
-# 只是没重发二进制 release。所以不再打 backend 补丁将就旧二进制，而是对齐官方做法：
-# 从官方源码现编 11-25 后的新二进制，前后端都是同一版、天然配套，补丁彻底删掉。
-# 源码编译脚本会下载官方旧 tarball、替换二进制+MANIFEST、重打包并改写
-# package/quickstart/Makefile 的 PKG_SOURCE_URL(file://) 与 PKG_HASH。
-# 当前目录是 OpenWrt 源码树（WRT-CORE 里已 cd ./wrt/），传 "."。
-BQS="$GITHUB_WORKSPACE/Scripts/build-quickstart-source.sh"
-if [ ! -f "$BQS" ]; then
-  echo "ERROR: 找不到 $BQS，无法从源码编译 quickstart，首页将因前后端错配而损坏"
+# ── iStoreOS 首页：直接用官方 0.18.0（2026-11-27 官方已修 R3 错配） ──
+# 官方 11-27 12:35Z 发了 v0.18.0 release，app-hub 同步升到 0.18.0-r1：
+#   - 后端二进制内置 http.sock 支持（--http-unix），已实测三个架构都含 socket 路径；
+#   - 前端 luci-app-quickstart 连 /var/run/quickstart/http.sock，前后端天然配套。
+# 因此撤掉原来的「从源码自编二进制覆盖官方包」workaround，直接沿用官方 app-hub 的
+# Makefile，让 OpenWrt 从官方 GitHub release 下载配套 tarball（hash 官方已更新）。
+# 硬校验：确认官方包版本/源地址/hash 正确，防止拿到旧版又出「首页读不出配置」的假固件。
+QS_MK="./package/quickstart/Makefile"
+if ! grep -q '^PKG_VERSION:=0.18.0' "$QS_MK" 2>/dev/null; then
+  echo "ERROR: quickstart 官方包不是 0.18.0（socket 配套版最低要求），终止构建"
+  grep -E '^PKG_VERSION' "$QS_MK" 2>/dev/null || true
   exit 1
 fi
-# ★硬失败：源码编译若中途出错（如下载/编译/重打包失败），必须让整个构建失败，
-# 绝不能静默继续用官方旧二进制产出「看似成功、首页坏」的假固件（2026-11-27 教训）。
-if ! bash "$BQS" "."; then
-  echo "ERROR: 源码编译 quickstart 失败，终止构建以避免首页前后端错配"
+if ! grep -q 'PKG_SOURCE_URL:=https://github.com/istoreos/quickstart/releases/download/' "$QS_MK" 2>/dev/null; then
+  echo "ERROR: quickstart Makefile 未指向官方 release 源，终止构建"
+  grep -E '^PKG_SOURCE_URL' "$QS_MK" 2>/dev/null || true
   exit 1
 fi
-# 二次校验：新 tarball 必须存在，且 quickstart 包 Makefile 的 PKG_SOURCE_URL 已指向本地 file://
-if ! ls ./dl/quickstart-binary-*.tar.gz >/dev/null 2>&1; then
-  echo "ERROR: 未找到重打的 quickstart tarball，终止构建"
+QS_HASH=$(grep '^PKG_HASH:=' "$QS_MK" 2>/dev/null | cut -d= -f2 | tr -d ' \r')
+if ! echo "$QS_HASH" | grep -qE '^[0-9a-f]{64}$'; then
+  echo "ERROR: quickstart 官方 PKG_HASH 异常($QS_HASH)，终止构建"
   exit 1
 fi
-if ! grep -q 'PKG_SOURCE_URL:=file://' ./package/quickstart/Makefile 2>/dev/null; then
-  echo "ERROR: quickstart 包 Makefile 未指向本地新 tarball，终止构建"
-  exit 1
-fi
-echo "OK: quickstart 源码二进制已重打并接入本地源，首页前后端均为官方 11-25 版"
+echo "OK: quickstart 官方 0.18.0（前后端 socket 配套，官方 release 直连），hash=$QS_HASH"
 
 UPDATE_PACKAGE "luci-app-re-homeproxy" "1andrevich/homeproxy-hiddify" "master" "" "luci-app-homeproxy"
 

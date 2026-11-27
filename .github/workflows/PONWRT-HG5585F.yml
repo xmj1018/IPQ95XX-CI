@@ -75,10 +75,9 @@ jobs:
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
-      # ★缓存 restore 必须在「Add extra feeds」之前：后者会从官方源码现编 quickstart
-      #   二进制并重打 dl/quickstart-binary-*.tar.gz + 改写 Makefile 的 PKG_HASH。
-      #   若 restore 在其后（旧顺序），缓存里的旧 tarball 会覆盖新包 → hash 对不上 →
-      #   package/quickstart 下载校验失败（#23 就是这么挂的）。与 WRT-CORE 顺序一致。
+      # 缓存 restore：2026-11-27 起 quickstart 已直接用官方 0.18.0 release（从 GitHub
+      # 官方源下载、官方 hash），不再本地重打 tarball。保留在 Add extra feeds 之前，
+      # 与 WRT-CORE 顺序一致，避免缓存里可能残留的旧 quickstart 包干扰。
       - name: Cache downloads
         uses: actions/cache@v4
         with:
@@ -123,25 +122,29 @@ jobs:
           copy_istore_pkg "$ISTORE_LUCI/luci/luci-lib-taskd"                luci-lib-taskd
           copy_istore_pkg "$ISTORE_LUCI/luci/luci-lib-xterm"                luci-lib-xterm
           rm -rf "$ISTORE_HUB" "$ISTORE_LUCI"
-          # ★iStoreOS 首页：对齐官方、从源码编译配套二进制（2026-11-27 定案）
-          #   官方 11-25 已修源码（后端 serve 默认绑定 http.sock），但没重发二进制 release；
-          #   app-hub 打包用的还是只听 TCP 3038 的旧二进制 → 前后端错配。
-          #   不再打 backend 补丁，改为从官方源码现编新二进制（前后端同一版、天然配套）。
-          #   当前目录是 wrt/（OpenWrt 源码树），传 "."。
-          # ★硬失败：源码编译若出错必须让构建失败，绝不能静默用旧二进制产出首页坏的假固件
-          if ! bash "$GITHUB_WORKSPACE/Scripts/build-quickstart-source.sh" "."; then
-            echo "ERROR: 源码编译 quickstart 失败，终止构建以避免首页前后端错配"
+          # ★iStoreOS 首页：直接用官方 0.18.0（2026-11-27 官方已修 R3 错配）
+          #   官方 11-27 发了 v0.18.0 release，后端二进制内置 http.sock 支持，
+          #   前端 luci-app-quickstart 0.18.0-r1 连 /var/run/quickstart/http.sock，
+          #   前后端天然配套。撤掉原来「从源码自编二进制覆盖官方包」的 workaround，
+          #   直接沿用官方 app-hub Makefile，让 OpenWrt 从官方 release 下载配套 tarball。
+          # 硬校验：确认官方包版本/源地址/hash 正确，防止拿到旧版又出首页坏假固件。
+          QS_MK="./package/quickstart/Makefile"
+          if ! grep -q '^PKG_VERSION:=0.18.0' "$QS_MK" 2>/dev/null; then
+            echo "ERROR: quickstart 官方包不是 0.18.0（socket 配套版最低要求），终止构建"
+            grep -E '^PKG_VERSION' "$QS_MK" 2>/dev/null || true
             exit 1
           fi
-          if ! ls ./dl/quickstart-binary-*.tar.gz >/dev/null 2>&1; then
-            echo "ERROR: 未找到重打的 quickstart tarball，终止构建"
+          if ! grep -q 'PKG_SOURCE_URL:=https://github.com/istoreos/quickstart/releases/download/' "$QS_MK" 2>/dev/null; then
+            echo "ERROR: quickstart Makefile 未指向官方 release 源，终止构建"
+            grep -E '^PKG_SOURCE_URL' "$QS_MK" 2>/dev/null || true
             exit 1
           fi
-          if ! grep -q 'PKG_SOURCE_URL:=file://' ./package/quickstart/Makefile 2>/dev/null; then
-            echo "ERROR: quickstart 包 Makefile 未指向本地新 tarball，终止构建"
+          QS_HASH=$(grep '^PKG_HASH:=' "$QS_MK" 2>/dev/null | cut -d= -f2 | tr -d ' \r')
+          if ! echo "$QS_HASH" | grep -qE '^[0-9a-f]{64}$'; then
+            echo "ERROR: quickstart 官方 PKG_HASH 异常($QS_HASH)，终止构建"
             exit 1
           fi
-          echo "OK: quickstart 源码二进制已重打并接入本地源"
+          echo "OK: quickstart 官方 0.18.0（前后端 socket 配套，官方 release 直连），hash=$QS_HASH"
           # ★Argon 主题：直接 clone 作者官方仓库（jerrykuku）master，编最新版 3.2.0。
           #   按作者 DEVELOPMENT.md 的官方做法，不用任何第三方 feed 的旧版/魔改版。
           #   先删 install -a 拉进来的软链，避免同名包冲突。
