@@ -324,13 +324,18 @@ jobs:
             | sha256sum -c - || { echo "ERROR: PON 状态组件与作者原文件不一致，中止"; exit 1; }
           echo "OK      luci-app-pon-status 作者原文件（SHA256 已校验，未修改）"
 
-          # 依赖确认：PONWRT 上游 an7581.config 默认已选这些包，缺了状态页没数据源。
-          echo "=== Airoha-only 插件依赖 ==="
+          # 依赖确认（软检查）：PONWRT 上游 an7581.config 默认已选这些包，缺了状态页没数据源。
+          # 真正的"是否被选中"由 defconfig 后的 .config 硬校验决定，这里只做提示，不中止。
+          # 注意：airoha-pond 的包目录名是 airoha-pon-daemons（Makefile 里 define Package/airoha-pond），
+          #       不能按包名找目录；kmod-airoha-xpon 在内核 target 里，也不在 pon_userspace feed。
+          echo "=== Airoha-only 插件依赖（软检查）==="
           for p in luci-app-pon airoha-ponctl airoha-pond kmod-airoha-xpon; do
-            if ls -d package/feeds/pon_userspace/"$p" >/dev/null 2>&1 || ls -d feeds/pon_userspace/"$p" >/dev/null 2>&1; then
-              echo "OK      $p"
+            d="$p"
+            [ "$p" = "airoha-pond" ] && d="airoha-pon-daemons"
+            if find feeds package/feeds -maxdepth 4 -type d -name "$d" 2>/dev/null | grep -q .; then
+              echo "OK      $p (dir=$d)"
             else
-              echo "ERROR: 缺少 PON 依赖 $p，中止"; exit 1
+              echo "WARN    未定位 $p (dir=$d)，交由 defconfig 校验"
             fi
           done
 
