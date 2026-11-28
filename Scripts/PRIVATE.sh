@@ -31,39 +31,69 @@ copy_istore_pkg() {
   rm -rf "./package/$name"
   cp -af "$src" "./package/$name"
 }
-copy_istore_pkg "$ISTORE_HUB/apps/quickstart/quickstart"          quickstart
-copy_istore_pkg "$ISTORE_HUB/apps/quickstart/luci-app-quickstart" luci-app-quickstart
 copy_istore_pkg "$ISTORE_HUB/apps/istorex/luci-app-istorex"       luci-app-istorex
 copy_istore_pkg "$ISTORE_LUCI/luci/luci-app-store"                luci-app-store
 copy_istore_pkg "$ISTORE_LUCI/luci/taskd"                         taskd
 copy_istore_pkg "$ISTORE_LUCI/luci/luci-lib-taskd"                luci-lib-taskd
 copy_istore_pkg "$ISTORE_LUCI/luci/luci-lib-xterm"                luci-lib-xterm
-rm -rf "$ISTORE_HUB" "$ISTORE_LUCI"
 
-# ── iStoreOS 首页：直接用官方 0.18.0（2026-11-27 官方已修 R3 错配） ──
-# 官方 11-27 12:35Z 发了 v0.18.0 release，app-hub 同步升到 0.18.0-r1：
-#   - 后端二进制内置 http.sock 支持（--http-unix），已实测三个架构都含 socket 路径；
-#   - 前端 luci-app-quickstart 连 /var/run/quickstart/http.sock，前后端天然配套。
-# 因此撤掉原来的「从源码自编二进制覆盖官方包」workaround，直接沿用官方 app-hub 的
-# Makefile，让 OpenWrt 从官方 GitHub release 下载配套 tarball（hash 官方已更新）。
-# 硬校验：确认官方包版本/源地址/hash 正确，防止拿到旧版又出「首页读不出配置」的假固件。
-QS_MK="./package/quickstart/Makefile"
-if ! grep -q '^PKG_VERSION:=0.18.0' "$QS_MK" 2>/dev/null; then
-  echo "ERROR: quickstart 官方包不是 0.18.0（socket 配套版最低要求），终止构建"
-  grep -E '^PKG_VERSION' "$QS_MK" 2>/dev/null || true
-  exit 1
+# ── iStoreOS 首页：整套锁定到「官网固件同款」的官方前端 + 官方后端（2026-11-28） ──
+# 背景（用户要求「官网固件里是啥咱就是啥」，并强调全部用官方源、权威、后期好更新）：
+#   解压官网 iStoreOS 25.12.6-2026110611 x86_64 官方固件逐项核对 + 读官方源码得出：
+#   - 官网固件首页 = luci-app-quickstart 0.12.10-r1 的 index.js（498KB，5 张卡片全部
+#     写死在前端：网络向导/局域网设备管理/网络测速/家长控制/应用商店），不依赖元数据，
+#     所以「该有的都有」。该 index.js MD5 feae5221c2b633088b8a5a7fcfc2b756，
+#     与官方 app-hub commit 45f666b60327afb742e1b460b174138c9f853930 逐字节一致。
+#   - 官方 app-hub main 现为 0.18.0，index.js 只剩 1438B 加载器，真正界面是 app.js；
+#     app.js 里 app 类卡片（网络测速/家长控制等）靠后端 /cgi-bin/luci/istore/home/v1/cards/
+#     返回的元数据才显示，元数据缺就没卡片——这正是我们之前首页卡片不齐的根因。
+#   - 官网固件后端 = quickstart 0.13.1，来自作者官方 linkease/istore-packages prebuilt，
+#     覆盖 aarch64/arm/x86_64；配套老前端走 istore_backend.lua 反代 127.0.0.1:3038，
+#     init 为 `serve --unix /var/run/quickstart/local.sock`（见官网固件 /etc/init.d/quickstart）。
+# 做法：前端 luci-app-quickstart 从官方 app-hub 的 45f666b checkout（0.12.10-r1）；
+#       后端 quickstart 用官方 istore-packages 0.13.1 tarball（官方 hash）覆盖 Makefile。
+# 全部作者官方源，版本锁定，后期官方升级只改这两个版本/哈希即可。
+ISTORE_QS_COMMIT="45f666b60327afb742e1b460b174138c9f853930"
+QS_BACKEND_VER="0.13.1"
+QS_BACKEND_HASH="f84ce3bfe1f6ee38338226cfdbb05283c6176cd75e5bb411c9411624f98ba0b1"
+
+# 前端：把官方 app-hub 切到 45f666b（浅克隆需补拉该 commit），再精确取 0.12.10-r1 包
+git -C "$ISTORE_HUB" fetch --depth=1 origin "$ISTORE_QS_COMMIT" 2>/dev/null || \
+  git -C "$ISTORE_HUB" fetch --unshallow 2>/dev/null || :
+if ! git -C "$ISTORE_HUB" cat-file -e "$ISTORE_QS_COMMIT^{commit}" 2>/dev/null; then
+  echo "ERROR: 官方 app-hub 缺少 45f666b 首页版本，无法照官网固件，终止构建"; exit 1
 fi
-if ! grep -q 'PKG_SOURCE_URL:=https://github.com/istoreos/quickstart/releases/download/' "$QS_MK" 2>/dev/null; then
-  echo "ERROR: quickstart Makefile 未指向官方 release 源，终止构建"
-  grep -E '^PKG_SOURCE_URL' "$QS_MK" 2>/dev/null || true
-  exit 1
+# 关掉 Windows Git 的换行符自动转换，确保 index.js 与官方源码逐字节一致
+git -C "$ISTORE_HUB" config core.autocrlf false
+git -C "$ISTORE_HUB" config core.eol lf
+git -C "$ISTORE_HUB" checkout -q "$ISTORE_QS_COMMIT" -- apps/quickstart/quickstart apps/quickstart/luci-app-quickstart
+FRONT_MK="$ISTORE_HUB/apps/quickstart/luci-app-quickstart/Makefile"
+if ! grep -q '^PKG_VERSION:=0.12.10-r1' "$FRONT_MK" 2>/dev/null; then
+  echo "ERROR: 官方前端不是 0.12.10-r1（官网固件同款），终止构建"; grep -E '^PKG_VERSION' "$FRONT_MK" 2>/dev/null || true; exit 1
 fi
-QS_HASH=$(grep '^PKG_HASH:=' "$QS_MK" 2>/dev/null | cut -d= -f2 | tr -d ' \r')
-if ! echo "$QS_HASH" | grep -qE '^[0-9a-f]{64}$'; then
-  echo "ERROR: quickstart 官方 PKG_HASH 异常($QS_HASH)，终止构建"
-  exit 1
+# 前端 index.js 逐字节校验（必须等于官网固件里那份完整 5 卡片前端）
+FRONT_JS="$ISTORE_HUB/apps/quickstart/luci-app-quickstart/htdocs/luci-static/quickstart/index.js"
+FRONT_MD5=$(md5sum "$FRONT_JS" 2>/dev/null | cut -d' ' -f1)
+if [ "$FRONT_MD5" != "feae5221c2b633088b8a5a7fcfc2b756" ]; then
+  echo "ERROR: 官方前端 index.js 与官网固件不一致（$FRONT_MD5），终止构建"; exit 1
 fi
-echo "OK: quickstart 官方 0.18.0（前后端 socket 配套，官方 release 直连），hash=$QS_HASH"
+
+# 后端：官方 app-hub 45f666b 的 Makefile 指向 0.13.0；官网固件实际是 0.13.1，
+# 这里把版本/源/hash 精确改成官方 istore-packages 0.13.1（哈希来自官方 release tarball）。
+QS_MK="$ISTORE_HUB/apps/quickstart/quickstart/Makefile"
+if ! grep -q 'PKG_SOURCE_URL:=https://github.com/linkease/istore-packages/releases/download/prebuilt/' "$QS_MK" 2>/dev/null; then
+  echo "ERROR: 官方 quickstart Makefile 未指向作者官方 prebuilt 源，终止构建"; exit 1
+fi
+sed -i "s/^PKG_VERSION:=.*/PKG_VERSION:=$QS_BACKEND_VER/" "$QS_MK"
+sed -i "s/^PKG_HASH:=.*/PKG_HASH:=$QS_BACKEND_HASH/" "$QS_MK"
+grep -q "^PKG_VERSION:=$QS_BACKEND_VER" "$QS_MK" && grep -q "^PKG_HASH:=$QS_BACKEND_HASH" "$QS_MK" || {
+  echo "ERROR: 官方 quickstart 0.13.1 版本/哈希写入失败，终止构建"; exit 1; }
+echo "OK: 首页官网固件同款 — 前端 luci-app-quickstart 0.12.10-r1 (MD5 $FRONT_MD5) + 后端 quickstart $QS_BACKEND_VER (hash $QS_BACKEND_HASH)"
+
+# 首页两包在锁定版本后再拷贝（此时官方仓库已切到 45f666b、后端 Makefile 已改 0.13.1）
+copy_istore_pkg "$ISTORE_HUB/apps/quickstart/quickstart"          quickstart
+copy_istore_pkg "$ISTORE_HUB/apps/quickstart/luci-app-quickstart" luci-app-quickstart
+rm -rf "$ISTORE_HUB" "$ISTORE_LUCI"
 
 UPDATE_PACKAGE "luci-app-re-homeproxy" "1andrevich/homeproxy-hiddify" "master" "" "luci-app-homeproxy"
 

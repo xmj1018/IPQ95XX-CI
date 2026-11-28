@@ -75,9 +75,10 @@ jobs:
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
-      # 缓存 restore：2026-11-27 起 quickstart 已直接用官方 0.18.0 release（从 GitHub
-      # 官方源下载、官方 hash），不再本地重打 tarball。保留在 Add extra feeds 之前，
-      # 与 WRT-CORE 顺序一致，避免缓存里可能残留的旧 quickstart 包干扰。
+      # 缓存 restore：2026-11-28 起 quickstart 锁定为官网固件同款官方 0.13.1 release
+      # （从作者官方 linkease/istore-packages 下载、官方 hash），前端 0.12.10-r1，
+      # 不再本地重打 tarball。保留在 Add extra feeds 之前，与 WRT-CORE 顺序一致，
+      # 避免缓存里可能残留的旧 quickstart 包干扰。
       - name: Cache downloads
         uses: actions/cache@v4
         with:
@@ -114,37 +115,73 @@ jobs:
             rm -rf "./package/$name"
             cp -af "$src" "./package/$name"
           }
-          copy_istore_pkg "$ISTORE_HUB/apps/quickstart/quickstart"          quickstart
-          copy_istore_pkg "$ISTORE_HUB/apps/quickstart/luci-app-quickstart" luci-app-quickstart
           copy_istore_pkg "$ISTORE_HUB/apps/istorex/luci-app-istorex"       luci-app-istorex
           copy_istore_pkg "$ISTORE_LUCI/luci/luci-app-store"                luci-app-store
           copy_istore_pkg "$ISTORE_LUCI/luci/taskd"                         taskd
           copy_istore_pkg "$ISTORE_LUCI/luci/luci-lib-taskd"                luci-lib-taskd
           copy_istore_pkg "$ISTORE_LUCI/luci/luci-lib-xterm"                luci-lib-xterm
+
+          # ── iStoreOS 首页：整套锁定到「官网固件同款」的官方前端 + 官方后端（2026-11-28） ──
+          # 与 SBE1V1K / BE10000 的 Scripts/PRIVATE.sh 完全一致。依据：解压官网 iStoreOS
+          # 25.12.6-2026110611 x86_64 官方固件逐项核对 + 读官方源码得出：
+          #   - 官网固件首页 = luci-app-quickstart 0.12.10-r1 的 index.js（498KB，5 张卡片
+          #     全部写死在前端：网络向导/局域网设备管理/网络测速/家长控制/应用商店），
+          #     不依赖后端元数据，所以「该有的都有」。index.js MD5 feae5221c2b633088b8a5a7fcfc2b756，
+          #     与官方 app-hub commit 45f666b60327afb742e1b460b174138c9f853930 逐字节一致。
+          #   - 官方 app-hub main 现为 0.18.0，index.js 只剩 1438B 加载器，真正界面是 app.js；
+          #     app.js 里 app 类卡片靠 /cgi-bin/luci/istore/home/v1/cards/ 元数据才显示，
+          #     元数据缺就没卡片 —— 这正是之前首页卡片不齐的根因。
+          #   - 官网固件后端 = quickstart 0.13.1，来自作者官方 linkease/istore-packages prebuilt，
+          #     init 为 `serve --unix /var/run/quickstart/local.sock`（见官网固件 /etc/init.d/quickstart）。
+          # 全部作者官方源，版本锁定；后期官方升级只改下面两个版本/哈希即可。
+          ISTORE_QS_COMMIT="45f666b60327afb742e1b460b174138c9f853930"
+          QS_BACKEND_VER="0.13.1"
+          QS_BACKEND_HASH="f84ce3bfe1f6ee38338226cfdbb05283c6176cd75e5bb411c9411624f98ba0b1"
+
+          # 前端：把官方 app-hub 切到 45f666b（浅克隆需补拉该 commit），再精确取 0.12.10-r1 包
+          git -C "$ISTORE_HUB" fetch --depth=1 origin "$ISTORE_QS_COMMIT" 2>/dev/null || \
+            git -C "$ISTORE_HUB" fetch --unshallow 2>/dev/null || :
+          if ! git -C "$ISTORE_HUB" cat-file -e "$ISTORE_QS_COMMIT^{commit}" 2>/dev/null; then
+            echo "ERROR: 官方 app-hub 缺少 45f666b 首页版本，无法照官网固件，终止构建"
+            exit 1
+          fi
+          # 关掉 Windows Git 的换行符自动转换，确保 index.js 与官方源码逐字节一致
+          git -C "$ISTORE_HUB" config core.autocrlf false
+          git -C "$ISTORE_HUB" config core.eol lf
+          git -C "$ISTORE_HUB" checkout -q "$ISTORE_QS_COMMIT" -- apps/quickstart/quickstart apps/quickstart/luci-app-quickstart
+          FRONT_MK="$ISTORE_HUB/apps/quickstart/luci-app-quickstart/Makefile"
+          if ! grep -q '^PKG_VERSION:=0.12.10-r1' "$FRONT_MK" 2>/dev/null; then
+            echo "ERROR: 官方前端不是 0.12.10-r1（官网固件同款），终止构建"
+            grep -E '^PKG_VERSION' "$FRONT_MK" 2>/dev/null || true
+            exit 1
+          fi
+          # 前端 index.js 逐字节校验（必须等于官网固件里那份完整 5 卡片前端）
+          FRONT_JS="$ISTORE_HUB/apps/quickstart/luci-app-quickstart/htdocs/luci-static/quickstart/index.js"
+          FRONT_MD5=$(md5sum "$FRONT_JS" 2>/dev/null | cut -d' ' -f1)
+          if [ "$FRONT_MD5" != "feae5221c2b633088b8a5a7fcfc2b756" ]; then
+            echo "ERROR: 官方前端 index.js 与官网固件不一致（$FRONT_MD5），终止构建"
+            exit 1
+          fi
+
+          # 后端：官方 app-hub 45f666b 的 Makefile 指向 0.13.0；官网固件实际是 0.13.1，
+          # 这里把版本/源/hash 精确改成官方 istore-packages 0.13.1（哈希来自官方 release tarball）。
+          QS_MK="$ISTORE_HUB/apps/quickstart/quickstart/Makefile"
+          if ! grep -q 'PKG_SOURCE_URL:=https://github.com/linkease/istore-packages/releases/download/prebuilt/' "$QS_MK" 2>/dev/null; then
+            echo "ERROR: 官方 quickstart Makefile 未指向作者官方 prebuilt 源，终止构建"
+            exit 1
+          fi
+          sed -i "s/^PKG_VERSION:=.*/PKG_VERSION:=$QS_BACKEND_VER/" "$QS_MK"
+          sed -i "s/^PKG_HASH:=.*/PKG_HASH:=$QS_BACKEND_HASH/" "$QS_MK"
+          grep -q "^PKG_VERSION:=$QS_BACKEND_VER" "$QS_MK" && grep -q "^PKG_HASH:=$QS_BACKEND_HASH" "$QS_MK" || {
+            echo "ERROR: 官方 quickstart 0.13.1 版本/哈希写入失败，终止构建"
+            exit 1
+          }
+          echo "OK: 首页官网固件同款 — 前端 luci-app-quickstart 0.12.10-r1 (MD5 $FRONT_MD5) + 后端 quickstart $QS_BACKEND_VER (hash $QS_BACKEND_HASH)"
+
+          # 首页两包在锁定版本后再拷贝（此时官方仓库已切到 45f666b、后端 Makefile 已改 0.13.1）
+          copy_istore_pkg "$ISTORE_HUB/apps/quickstart/quickstart"          quickstart
+          copy_istore_pkg "$ISTORE_HUB/apps/quickstart/luci-app-quickstart" luci-app-quickstart
           rm -rf "$ISTORE_HUB" "$ISTORE_LUCI"
-          # ★iStoreOS 首页：直接用官方 0.18.0（2026-11-27 官方已修 R3 错配）
-          #   官方 11-27 发了 v0.18.0 release，后端二进制内置 http.sock 支持，
-          #   前端 luci-app-quickstart 0.18.0-r1 连 /var/run/quickstart/http.sock，
-          #   前后端天然配套。撤掉原来「从源码自编二进制覆盖官方包」的 workaround，
-          #   直接沿用官方 app-hub Makefile，让 OpenWrt 从官方 release 下载配套 tarball。
-          # 硬校验：确认官方包版本/源地址/hash 正确，防止拿到旧版又出首页坏假固件。
-          QS_MK="./package/quickstart/Makefile"
-          if ! grep -q '^PKG_VERSION:=0.18.0' "$QS_MK" 2>/dev/null; then
-            echo "ERROR: quickstart 官方包不是 0.18.0（socket 配套版最低要求），终止构建"
-            grep -E '^PKG_VERSION' "$QS_MK" 2>/dev/null || true
-            exit 1
-          fi
-          if ! grep -q 'PKG_SOURCE_URL:=https://github.com/istoreos/quickstart/releases/download/' "$QS_MK" 2>/dev/null; then
-            echo "ERROR: quickstart Makefile 未指向官方 release 源，终止构建"
-            grep -E '^PKG_SOURCE_URL' "$QS_MK" 2>/dev/null || true
-            exit 1
-          fi
-          QS_HASH=$(grep '^PKG_HASH:=' "$QS_MK" 2>/dev/null | cut -d= -f2 | tr -d ' \r')
-          if ! echo "$QS_HASH" | grep -qE '^[0-9a-f]{64}$'; then
-            echo "ERROR: quickstart 官方 PKG_HASH 异常($QS_HASH)，终止构建"
-            exit 1
-          fi
-          echo "OK: quickstart 官方 0.18.0（前后端 socket 配套，官方 release 直连），hash=$QS_HASH"
           # ★Argon 主题：直接 clone 作者官方仓库（jerrykuku）master，编最新版 3.2.0。
           #   按作者 DEVELOPMENT.md 的官方做法，不用任何第三方 feed 的旧版/魔改版。
           #   先删 install -a 拉进来的软链，避免同名包冲突。
@@ -254,6 +291,49 @@ jobs:
           # argon 是 clone 到 package/ 根下的官方仓库，单独确认
           [ -f package/luci-theme-argon/Makefile ] && echo "OK      luci-theme-argon (官方 clone $(grep -m1 '^PKG_VERSION' package/luci-theme-argon/Makefile))" || echo "MISSING luci-theme-argon"
 
+      - name: Add HG5585F-only LuCI status plugins (NPU + PON optical)
+        run: |
+          cd wrt
+          # ★这两个插件只对 Airoha / PON 机型有意义，SBE1V1K 与 BE10000 的入口不加。
+          # 1) luci-app-airoha-npu：原作者 rchen14b 本人的官方仓，固定 commit，
+          #    版本 1.0.1-r2，Apache-2.0，依赖 +luci-base @TARGET_airoha。
+          NPU_COMMIT="561263eb624912cd427f3f4a09f3994a76f2ec6a"
+          git clone --depth=1 --single-branch --branch main \
+            "https://github.com/rchen14b/luci-app-airoha-npu.git" package/luci-app-airoha-npu
+          git -C package/luci-app-airoha-npu fetch --depth=1 origin "$NPU_COMMIT" 2>/dev/null || :
+          git -C package/luci-app-airoha-npu checkout -q "$NPU_COMMIT" || { echo "ERROR: luci-app-airoha-npu 官方 commit 缺失，中止"; exit 1; }
+          grep -q '^PKG_VERSION:=1.0.1' package/luci-app-airoha-npu/Makefile || { echo "ERROR: luci-app-airoha-npu 版本异常，中止"; exit 1; }
+          grep -q 'github.com/rchen14b/luci-app-airoha-npu' package/luci-app-airoha-npu/Makefile || { echo "ERROR: luci-app-airoha-npu 非原作者源，中止"; exit 1; }
+          echo "OK      luci-app-airoha-npu 原作者版 $(git -C package/luci-app-airoha-npu rev-parse --short HEAD)"
+
+          # 2) luci-app-pon-status：GitHub 上没有同名独立包，它是插件作者
+          #    lunatickochiya 的 autoset 包里 autoset-uci-airoha 装的两份文件：
+          #    70_pon.js（状态→概览的光模块卡片）+ rpcd ACL。这里只取这两份原文件，
+          #    用我们仓库里的薄包装 Makefile 打包，不改插件源码，且逐字节校验作者原文件。
+          #    不装整套 autoset：它的 zzz-autoset-airoha 会改 LAN IP/主机名/主题。
+          PON_COMMIT="a0ac6ad4d0c986fa25ccbfdb4da4f6f276a39f9e"
+          PON_SRC="https://raw.githubusercontent.com/lunatickochiya/Pon-Action/$PON_COMMIT/package/kochiya/autoset/files/generic"
+          rm -rf package/luci-app-pon-status
+          mkdir -p package/luci-app-pon-status/files
+          cp -af "$GITHUB_WORKSPACE/package/luci-app-pon-status/Makefile" package/luci-app-pon-status/Makefile
+          curl -fsSL "$PON_SRC/70_pon.js" -o package/luci-app-pon-status/files/70_pon.js || { echo "ERROR: 下载 70_pon.js 失败，中止"; exit 1; }
+          curl -fsSL "$PON_SRC/luci-app-pon-status.json" -o package/luci-app-pon-status/files/luci-app-pon-status.json || { echo "ERROR: 下载 PON 状态 ACL 失败，中止"; exit 1; }
+          printf '%s  %s\n' \
+            'fe8e5956f1a801e92ffa49ac17919fe140d20b0c520c4f90b897a3aaa6c2fc03' 'package/luci-app-pon-status/files/70_pon.js' \
+            '85a1127c38433f04d440d85cbe249cbc4f955f2762e30e78b9cd057d7263ca2a' 'package/luci-app-pon-status/files/luci-app-pon-status.json' \
+            | sha256sum -c - || { echo "ERROR: PON 状态组件与作者原文件不一致，中止"; exit 1; }
+          echo "OK      luci-app-pon-status 作者原文件（SHA256 已校验，未修改）"
+
+          # 依赖确认：PONWRT 上游 an7581.config 默认已选这些包，缺了状态页没数据源。
+          echo "=== Airoha-only 插件依赖 ==="
+          for p in luci-app-pon airoha-ponctl airoha-pond kmod-airoha-xpon; do
+            if ls -d package/feeds/pon_userspace/"$p" >/dev/null 2>&1 || ls -d feeds/pon_userspace/"$p" >/dev/null 2>&1; then
+              echo "OK      $p"
+            else
+              echo "ERROR: 缺少 PON 依赖 $p，中止"; exit 1
+            fi
+          done
+
       - name: Overlay custom files (hostname + apk repos + honk)
         run: |
           mkdir -p wrt/files
@@ -324,6 +404,11 @@ jobs:
           # 中文包为软检查：luci.mk 按 zh_Hans 生成 luci-i18n-oaf-zh-cn，
           # 个别 luci.mk 版本命名可能有差异，缺了只警告不中止（OAF 本体功能不受影响）。
           if grep -q "^CONFIG_PACKAGE_luci-i18n-oaf-zh-cn=y" .config; then echo "OK   OAF luci-i18n-oaf-zh-cn"; else echo "WARN OAF 中文 i18n 包未选中（本体功能不受影响）"; fi
+          # ★Airoha-only 状态插件硬校验：clone 成功但被 Kconfig 静默丢弃同样算失败。
+          echo "=== Airoha-only 状态插件（仅 HG5585F）==="
+          for p in luci-app-airoha-npu luci-app-pon-status luci-app-pon airoha-ponctl; do
+            if grep -q "^CONFIG_PACKAGE_${p}=y" .config; then echo "OK   ${p}"; else echo "MISSING ${p}"; echo "ERROR: ${p} 未被 defconfig 选中，中止"; exit 1; fi
+          done
 
       - name: Download package sources
         run: |
